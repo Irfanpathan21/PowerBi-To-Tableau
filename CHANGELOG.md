@@ -1,6 +1,6 @@
 # Changelog
 
-## v31.5.0-dev — Sprint 142–147 — Phases 2–7 (Extraction guards + Conversion guards + Self-Healing v3.5/v3.6 + Cross-artifact validator + Schema validator)
+## v31.5.0-dev — Sprint 142–148 — Phases 2–8 (Extraction guards + Conversion guards + Self-Healing v3.5/v3.6 + Cross-artifact validator + Schema validator + Equivalence CI)
 
 Continues the Zero-Error roadmap with extraction hardening, conversion
 guards active in the pipeline, and 10 new model-side self-healers.
@@ -63,6 +63,19 @@ New `powerbi_import/cross_validator.py` bridging TMDL model ↔ PBIR report:
 - `CrossIssue` dataclass with category/severity/message/location
 - Added `tests/test_cross_validator.py` (27 tests).
 - Full suite: 7,797 passed, 0 failed.
+
+### Phase 8 — Equivalence Testing in CI
+
+New `tests/test_equivalence_ci.py` — dynamic E2E equivalence gate:
+
+- Migrates all 11 sample `.twb` workbooks end-to-end (extract → generate)
+- Per workbook 5 checks: project structure, validator, schema validator, cross-validator, regression snapshot
+- Dynamic test class factory: `_make_equivalence_class()` creates per-workbook `TestEquivalence_*` classes
+- Baseline management: auto-generates `tests/baselines/{name}.snapshot.json` on first run, compares on subsequent runs
+- Standalone mode: `python tests/test_equivalence_ci.py --generate-baselines`
+- New `.github/workflows/equivalence.yml` — nightly CI (03:00 UTC), Python 3.12/3.13 matrix, JUnit XML artifact upload
+- 44 passed, 11 skipped (cross-validator skip expected for TMDL-only output)
+- Full suite: 7,894 passed, 0 failed.
 
 ### Phase 7 — PBI Desktop Schema Validator
 

@@ -173,7 +173,7 @@ schema (not just our internal expectations).
 
 ---
 
-## Phase 8 — Equivalence Testing in CI (Sprint 148 / v32.0.0)
+## Phase 8 — Equivalence Testing in CI (Sprint 148 / v32.0.0) ✅ Shipped
 
 **Owner:** @tester + @reviewer
 **Goal:** Catch silent semantic drift between Tableau and PBI output.
