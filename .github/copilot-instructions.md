@@ -70,6 +70,7 @@ Automated migration of Tableau workbooks (.twb/.twbx) to Power BI projects (.pbi
   - `equivalence_tester.py`: Cross-platform validation — measure value comparison with tolerance, SSIM-based screenshot comparison, validation report generation
   - `regression_suite.py`: Regression suite — snapshot generation (tables, measures, filters, formula hashes), snapshot comparison with drift detection
   - `recovery_report.py`: Self-healing recovery report — records every auto-repair action (category, severity, description, action, follow-up), JSON export, MigrationReport integration via `merge_into()`
+  - `preceptor.py`: Preceptorship loop engine — DRAFT→REVIEW→APPROVE/COACH quality gate, 6-dimension scoring (completeness, DAX correctness, M validity, TMDL structure, PBIR fidelity, visual equivalence), SSIM screenshot comparison, structured coaching feedback, max 3 cycles then escalate (warn or block), `PreceptorLoop.run()`, `ReviewReport`, `ReviewScorecard`
   - `security_validator.py`: Centralized security utilities — path validation (null byte, traversal, extension whitelist), ZIP slip defense (`safe_zip_extract_member`), XML XXE protection (`safe_parse_xml`), credential detection/redaction (10 patterns), M query credential scrubbing, template substitution sanitization, migration artifact scanning
   - `governance.py`: Enterprise governance framework — `GovernanceEngine` (naming conventions, PII detection, sensitivity labels), `AuditTrail` (append-only JSONL with SHA-256 hashing), `run_governance()` convenience function, configurable warn/enforce modes
   - `sla_tracker.py`: Migration SLA tracker — per-workbook time/fidelity/validation compliance, `SLATracker` with `start()`/`record_result()`/`get_report()`, `SLAReport` with compliance rate and JSON export
@@ -424,6 +425,7 @@ See `docs/AGENTS.md` for the full architecture diagram, data flow, and handoff p
 | **@assessor** | Readiness scoring, strategy, diff reports, prep lineage | `assessment.py`, `server_assessment.py`, `strategy_advisor.py`, `schema_drift.py`, `prep_lineage.py`, `prep_lineage_report.py` |
 | **@merger** | Shared semantic model, fingerprint matching | `shared_model.py`, `merge_config.py` |
 | **@deployer** | Fabric/PBI deployment, auth, gateway | `deploy/*.py`, `gateway_config.py`, `telemetry.py` |
+| **@reviewer** | Artifact quality review, preceptorship loop, coaching feedback | `preceptor.py` |
 | **@tester** | Tests (7,072), coverage, regression | `tests/*.py` |
 
 ### Rules
@@ -439,4 +441,4 @@ See `docs/AGENTS.md` for the full architecture diagram, data flow, and handoff p
 
 All agent files live in `.github/agents/`:
 - `shared.instructions.md` — base rules all agents inherit
-- `{name}.agent.md` — per-agent specialization (12 files: orchestrator, extractor, dax, wiring, semantic, visual, converter, generator, assessor, merger, deployer, tester)
+- `{name}.agent.md` — per-agent specialization (13 files: orchestrator, extractor, dax, wiring, semantic, visual, converter, generator, assessor, merger, deployer, reviewer, tester)

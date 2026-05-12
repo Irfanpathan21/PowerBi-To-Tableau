@@ -46,6 +46,35 @@ All agents MUST follow these rules. They apply to every file in the project.
 - Calendar `Date.MonthName()`/`Date.DayOfWeekName()` must pass explicit culture parameter
 - Connection string values must be escaped with `_m_escape_string()` before M injection
 
+## Preceptorship Loop — Quality Gate
+
+All generation agents participate in the **preceptorship loop** before artifacts are finalized:
+
+```
+DRAFT (Agent) → REVIEW (@reviewer) → APPROVE? (≥ 4★?)
+     ↑                                    │
+     │              YES ──────────────────→ DONE
+     │               NO ──────────────────→ COACH (feedback)
+     │                                        │
+     └────────────────────────────────────────┘
+                   (max 3 cycles, then escalate)
+```
+
+### Rules
+- After generating artifacts, the pipeline invokes `@reviewer` for quality scoring
+- If scored < 4★, read the coaching feedback and apply fixes within your domain
+- Do NOT ignore coaching items — address each one or explain why it's not applicable
+- After 3 cycles, the reviewer escalates to the user (accept-with-warnings or block)
+- The review is read-only — `@reviewer` never modifies your files directly
+
+### Scoring Dimensions (6)
+1. **Completeness** — all source objects mapped to output
+2. **DAX Correctness** — valid syntax, no Tableau leakage
+3. **M Query Validity** — balanced if/else, proper quoting
+4. **TMDL Structure** — relationships, Calendar, RLS
+5. **PBIR Fidelity** — visual types, filters, layout
+6. **Visual Equivalence** — SSIM screenshot comparison (source vs output)
+
 ## Cross-Agent Handoff Protocol
 
 When your task requires work outside your domain:

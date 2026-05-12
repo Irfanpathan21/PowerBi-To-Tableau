@@ -1,6 +1,6 @@
 # Multi-Agent Architecture — Tableau to Power BI Migration
 
-This project uses a **12-agent specialization model**. Each agent has scoped domain knowledge, file ownership, and clear boundaries. Four new specialist agents (@dax, @wiring, @semantic, @visual) provide deep expertise in their domains, while @converter and @generator remain as coordination layers.
+This project uses a **13-agent specialization model**. Each agent has scoped domain knowledge, file ownership, and clear boundaries. Four specialist agents (@dax, @wiring, @semantic, @visual) provide deep expertise, @converter and @generator remain as coordination layers, and **@reviewer** enforces a preceptorship quality loop on all generated artifacts.
 
 ## Quick Reference
 
@@ -17,6 +17,7 @@ This project uses a **12-agent specialization model**. Each agent has scoped dom
 | **@assessor** | Migration readiness, scoring, strategy, diff reports, validation | `assessment.py`, `server_assessment.py`, `global_assessment.py`, `strategy_advisor.py`, `visual_diff.py`, `comparison_report.py`, `migration_report.py`, `equivalence_tester.py`, `regression_suite.py`, `schema_drift.py`, `validator.py` |
 | **@merger** | Shared semantic model, multi-workbook merge, Fabric merge | `shared_model.py`, `merge_config.py` (+ co-owns `merge_assessment.py`, `merge_report_html.py`, `thin_report_generator.py`) |
 | **@deployer** | Fabric/PBI deployment, auth, gateway, telemetry, multi-tenant | `deploy/*.py`, `gateway_config.py`, `telemetry.py`, `telemetry_dashboard.py`, `refresh_generator.py` |
+| **@reviewer** | Artifact quality review, preceptorship loop, coaching feedback, fidelity scoring | `powerbi_import/preceptor.py` |
 | **@tester** | Tests, coverage, fixtures, regression | `tests/*.py` |
 
 ## Architecture Diagram
@@ -47,11 +48,75 @@ This project uses a **12-agent specialization model**. Each agent has scoped dom
                   └────────────┘    └─────────┘  └────────┘
 
               ┌────────────────────────────────────────────┐
+              │                 Reviewer                    │
+              │    (Preceptorship loop — reviews artifacts  │
+              │     from Semantic + Visual + DAX + Wiring)  │
+              └────────────────────────────────────────────┘
+
+              ┌────────────────────────────────────────────┐
               │                  Tester                     │
               │    (Cross-cutting — reads all, writes       │
               │     only to tests/)                         │
               └────────────────────────────────────────────┘
 ```
+
+## The Preceptorship Loop
+
+Every migration passes through a **quality gate** before artifacts are finalized:
+
+```
+DRAFT (Agent)  ──→  REVIEW (@reviewer)  ──→  APPROVE? (≥ 4★?)
+     ↑                                           │
+     │                  YES ─────────────────────→ DONE (artifacts ready)
+     │                   NO ─────────────────────→ COACH (structured feedback)
+     │                                                │
+     └────────────────────────────────────────────────┘
+                       (max 3 cycles, then escalate)
+```
+
+### Review Dimensions (5-star scoring)
+
+| Dimension | What @reviewer Checks |
+|-----------|----------------------|
+| **Completeness** | All source objects have corresponding output (no missing tables, measures, visuals) |
+| **DAX Correctness** | No Tableau function leakage, valid DAX syntax, correct aggregation context |
+| **M Query Validity** | Balanced if/then/else, proper quoting, valid connector expressions |
+| **TMDL Structure** | Valid relationships, proper cardinality, Calendar table wired, RLS roles valid |
+| **PBIR Fidelity** | Visual types mapped correctly, filters at right level, layout reasonable |
+| **Visual Equivalence** | SSIM screenshot comparison between Tableau source and Power BI output visuals |
+
+### Scoring Rules
+
+- **≥ 4★ average** across all 6 dimensions → **APPROVE** — artifact is ready
+- **< 4★ average** → **COACH** — @reviewer provides specific, actionable feedback per dimension
+- **After 3 failed cycles** → **ESCALATE** to user with two options:
+  - **Accept with warnings** — proceed with quality annotations in the migration report
+  - **Block** — halt and request manual intervention
+
+### Coaching Feedback Format
+
+```
+COACH FEEDBACK — Cycle {n}/3
+═══════════════════════════
+Dimension: {dimension_name} — {score}★
+Issue: {specific problem found}
+Location: {file path or artifact reference}
+Fix: {concrete action the owning agent should take}
+Example: {before → after, if applicable}
+```
+
+### Pipeline Integration
+
+The preceptorship loop triggers:
+1. **After generation** — automatic review of the full .pbip output
+2. **On `--review` flag** — explicit review of existing artifacts
+3. **On `--qa` flag** — combined with existing QA checks for deeper analysis
+
+The `PreceptorLoop` class in `powerbi_import/preceptor.py` drives the cycle, consuming:
+- `ArtifactValidator` results (structural checks)
+- `MigrationReport` fidelity data (conversion coverage)
+- `RecoveryReport` repair actions (self-healing effectiveness)
+- Extraction JSON files (source-of-truth for completeness)
 
 ## Specialist Agent Decomposition
 
@@ -141,4 +206,5 @@ All agent definitions are in `.github/agents/`:
 - `assessor.agent.md` — Migration analysis + validation
 - `merger.agent.md` — Multi-workbook merge (PBIP + Fabric)
 - `deployer.agent.md` — Fabric/PBI deployment + multi-tenant
+- `reviewer.agent.md` — Artifact quality review + preceptorship loop (NEW)
 - `tester.agent.md` — Test creation and validation
