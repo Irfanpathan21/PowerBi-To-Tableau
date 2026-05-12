@@ -1,6 +1,6 @@
 # Changelog
 
-## v31.5.0-dev — Sprint 142–149 — Phases 2–9 (Extraction guards + Conversion guards + Self-Healing v3.5/v3.6 + Cross-artifact + Schema + Equivalence CI + Auto-Rollback)
+## v31.5.0-dev — Sprint 142–150 — Phases 2–10 (Extraction guards + Conversion guards + Self-Healing v3.5/v3.6 + Cross-artifact + Schema + Equivalence CI + Auto-Rollback + Feedback Loop)
 
 Continues the Zero-Error roadmap with extraction hardening, conversion
 guards active in the pipeline, and 10 new model-side self-healers.
@@ -63,6 +63,22 @@ New `powerbi_import/cross_validator.py` bridging TMDL model ↔ PBIR report:
 - `CrossIssue` dataclass with category/severity/message/location
 - Added `tests/test_cross_validator.py` (27 tests).
 - Full suite: 7,797 passed, 0 failed.
+
+### Phase 10 — Continuous Feedback Loop
+
+New `powerbi_import/feedback_loop.py` — turns failures into regression fixtures:
+
+- **`--report-issue` CLI flag**: creates a redacted issue package ZIP after migration
+- **`IssueCollector`**: gathers verdict, extraction JSONs, QA report, fixture hint; redacts all credentials
+- **`RegressionFixtureGenerator`**: derives minimal regression fixture from issue package → `tests/fixtures/regressions/`
+- **`ZeroTouchTracker`**: records per-workbook success/failure, computes Zero-Touch Open Rate, persists to JSON
+- **Zero-Touch Dashboard**: HTML dashboard with rate %, top failure modes, recent migrations table
+- **Credential redaction**: 4-pattern redactor (passwords, server names, usernames, JSON secrets)
+- **XSS protection**: all dashboard HTML outputs are properly escaped
+- Integrated into `migrate.py`: records outcome after every migration, auto-updates dashboard when ≥3 records
+- New `.github/workflows/regression_triage.yml` — weekly Monday scan for new regression fixtures
+- Added `tests/test_feedback_loop.py` (30 tests).
+- Full suite: 7,925 passed, 0 failed.
 
 ### Phase 9 — Auto-Rollback + Recovery Engine
 

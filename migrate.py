@@ -2045,6 +2045,13 @@ def _add_report_args(parser):
     )
 
     parser.add_argument(
+        '--report-issue',
+        action='store_true',
+        default=False,
+        help='After migration, create a redacted issue package ZIP for regression tracking'
+    )
+
+    parser.add_argument(
         '--telemetry',
         action='store_true',
         default=False,
@@ -3990,6 +3997,60 @@ def _run_rollback_gate(args, source_basename):
     return result
 
 
+def _run_issue_report(args, source_basename, rollback_result=None):
+    """Phase 10: Create a redacted issue package for regression tracking."""
+    try:
+        from powerbi_import.feedback_loop import IssueCollector
+    except ImportError:
+        return
+
+    out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
+    project_dir = os.path.join(out_base, source_basename)
+    extract_dir = os.path.join(os.path.dirname(__file__), 'tableau_export')
+    source_file = getattr(args, 'tableau_file', None)
+
+    verdict = None
+    if rollback_result and 'verdict' in rollback_result:
+        verdict = rollback_result['verdict']
+
+    collector = IssueCollector(project_dir, source_basename, extract_dir=extract_dir)
+    package_path = collector.collect(verdict=verdict, source_file=source_file,
+                                     output_dir=out_base)
+    if package_path:
+        print(f"\n  Issue package: {package_path}")
+
+
+def _record_zero_touch(args, source_basename, *, success, failure_mode='',
+                       rollback_result=None):
+    """Phase 10: Record migration outcome for Zero-Touch Open Rate tracking."""
+    try:
+        from powerbi_import.feedback_loop import ZeroTouchTracker
+    except ImportError:
+        return
+
+    out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
+    history_path = os.path.join(out_base, 'zero_touch_history.json')
+
+    verdict_sev = ''
+    issues_count = 0
+    if rollback_result and 'verdict' in rollback_result:
+        v = rollback_result['verdict']
+        verdict_sev = v.get('severity', '') if isinstance(v, dict) else ''
+        issues_count = v.get('issue_count', 0) if isinstance(v, dict) else 0
+
+    tracker = ZeroTouchTracker(history_path=history_path)
+    tracker.record(source_basename, success=success, failure_mode=failure_mode,
+                   verdict_severity=verdict_sev, issues_count=issues_count)
+    tracker.save()
+
+    # Update dashboard if it exists or if enough records
+    dashboard_path = os.path.join(
+        os.path.dirname(__file__), 'docs', 'zero_error_dashboard.html'
+    )
+    if tracker.total_count >= 3 or os.path.isfile(dashboard_path):
+        tracker.save_dashboard(dashboard_path)
+
+
 def _run_qa_suite(args, source_basename):
     """Unified QA suite: validate → auto-fix → governance (warn) → comparison → QA report JSON."""
     out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
@@ -5099,11 +5160,19 @@ def _run_single_migration(args):
         rollback_result = _run_rollback_gate(args, source_basename)
         if rollback_result and rollback_result.get('action') == 'rollback':
             progress.fail("Quality gate: CRITICAL — rolled back")
+            _record_zero_touch(args, source_basename, success=False,
+                               failure_mode='critical_rollback', rollback_result=rollback_result)
             return ExitCode.VALIDATION_FAILED
         if rollback_result and rollback_result.get('action') == 'quarantine':
             progress.fail("Quality gate: ERROR — quarantined to _FAILED/")
+            _record_zero_touch(args, source_basename, success=False,
+                               failure_mode='quarantined', rollback_result=rollback_result)
             if getattr(args, 'strict', False):
                 return ExitCode.VALIDATION_FAILED
+
+    # Step 3h: Issue reporting (Phase 10, --report-issue flag)
+    if getattr(args, 'report_issue', False) and results.get('generation') and not args.dry_run:
+        _run_issue_report(args, source_basename, rollback_result)
 
     # Step 4: Migration report
     progress.start("Generating migration report")
@@ -5182,6 +5251,10 @@ def _run_single_migration(args):
 
     # Final report
     all_success = _print_migration_summary(results, report_summary, start_time)
+
+    # Record Zero-Touch Open Rate (Phase 10)
+    _record_zero_touch(args, source_basename, success=all_success,
+                       rollback_result=rollback_result)
 
     _finalize_telemetry(telemetry, all_success, results)
 

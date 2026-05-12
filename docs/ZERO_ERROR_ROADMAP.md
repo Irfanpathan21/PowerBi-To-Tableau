@@ -216,20 +216,18 @@ off and emit a triage package.
 
 ---
 
-## Phase 10 — Continuous Feedback Loop (Sprint 150 / v32.2.0)
+## Phase 10 — Continuous Feedback Loop ✅ Shipped
 
 **Owner:** @assessor + @deployer
 **Goal:** Every real-world failure becomes a regression test within 24 h.
 
-- Telemetry v3 (opt-in): when a user runs `migrate.py --report-issue`, ship
-  the redacted triage package to `https://issues.tableautopowerbi.dev`
-- A weekly bot:
-  - Triages new packages
-  - Auto-derives a minimal repro `.twbx`
-  - Opens a PR adding it to `tests/fixtures/regressions/`
-  - Tags the most likely owner agent
-- Dashboard: `docs/zero_error_dashboard.html` — Zero-Touch Open Rate over
-  time, top failure modes, healers' hit-rate, validator catch-rate
+- `--report-issue` CLI flag: creates redacted issue package ZIP
+- `IssueCollector`: gathers verdict, extraction JSONs, QA report, fixture hint; redacts credentials
+- `RegressionFixtureGenerator`: derives minimal regression fixture → `tests/fixtures/regressions/`
+- `ZeroTouchTracker`: per-workbook success/failure tracking, Zero-Touch Open Rate computation
+- Dashboard: `docs/zero_error_dashboard.html` — rate %, top failure modes, recent migrations
+- `.github/workflows/regression_triage.yml` — weekly Monday triage bot
+- 30 tests, 7,925 passed, 0 failed
 
 ---
 
@@ -249,15 +247,15 @@ Every sprint must:
 | Phase | Sprint | Version | Status | Zero-Touch % |
 |-------|--------|---------|--------|--------------|
 | 1 — Pre-flight | 141 | v31.4.0 | ✅ Shipped | _baseline ~70 %_ |
-| 2 — Extraction guards | 142 | v31.5.0 | 🟡 In progress | — |
+| 2 — Extraction guards | 142 | v31.5.0 | ✅ Shipped | — |
 | 3 — Conversion guards | 143 | v31.6.0 | ✅ Shipped | — |
 | 4 — Self-Healing v3.5 | 144 | v31.7.0 | ✅ Shipped | — |
 | 5 — Self-Healing v3.6 | 145 | v31.8.0 | ✅ Shipped | — |
 | 6 — Cross-artifact validator | 146 | v31.9.0 | ✅ Shipped | — |
 | 7 — Schema validator | 147 | v31.10.0 | ✅ Shipped | — |
-| 8 — Equivalence in CI | 148 | v32.0.0 | ⏸ Planned | — |
-| 9 — Auto-rollback | 149 | v32.1.0 | ⏸ Planned | — |
-| 10 — Feedback loop | 150 | v32.2.0 | ⏸ Planned | **Target ≥ 99 %** |
+| 8 — Equivalence in CI | 148 | v32.0.0 | ✅ Shipped | — |
+| 9 — Auto-rollback | 149 | v32.1.0 | ✅ Shipped | — |
+| 10 — Feedback loop | 150 | v32.2.0 | ✅ Shipped | **Target ≥ 99 %** |
 
 ---
 
