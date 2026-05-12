@@ -1,6 +1,6 @@
 # Changelog
 
-## v31.5.0-dev — Sprint 142–148 — Phases 2–8 (Extraction guards + Conversion guards + Self-Healing v3.5/v3.6 + Cross-artifact validator + Schema validator + Equivalence CI)
+## v31.5.0-dev — Sprint 142–149 — Phases 2–9 (Extraction guards + Conversion guards + Self-Healing v3.5/v3.6 + Cross-artifact + Schema + Equivalence CI + Auto-Rollback)
 
 Continues the Zero-Error roadmap with extraction hardening, conversion
 guards active in the pipeline, and 10 new model-side self-healers.
@@ -63,6 +63,22 @@ New `powerbi_import/cross_validator.py` bridging TMDL model ↔ PBIR report:
 - `CrossIssue` dataclass with category/severity/message/location
 - Added `tests/test_cross_validator.py` (27 tests).
 - Full suite: 7,797 passed, 0 failed.
+
+### Phase 9 — Auto-Rollback + Recovery Engine
+
+New `powerbi_import/rollback_engine.py` — severity-based quality gate:
+
+- **Severity ladder**: INFO → WARNING → ERROR → CRITICAL
+- **Actions**: ship (INFO/WARNING), quarantine to `_FAILED/` (ERROR), rollback + triage ZIP (CRITICAL)
+- **Triage package**: `triage_package.zip` with verdict JSON, extraction JSONs, partial output, triage HTML
+- **Triage HTML**: styled report with severity badges, issue table, XSS-escaped
+- **`--strict` flag**: structured exit codes (0=clean, 1=warnings, 2=errors, 3=critical)
+- **Escalation**: >20 error-level issues auto-escalate to CRITICAL
+- `RollbackEngine.ingest_*()` methods: validation, schema, cross-validator, QA report, repairs
+- `Verdict` class with `.should_ship`, `.should_quarantine`, `.should_rollback`, `.to_dict()`
+- Integrated into `migrate.py` after QA suite, before migration report
+- Added `tests/test_rollback_engine.py` (35 tests).
+- Full suite: 7,895 passed, 0 failed.
 
 ### Phase 8 — Equivalence Testing in CI
 

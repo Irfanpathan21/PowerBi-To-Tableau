@@ -195,7 +195,7 @@ schema (not just our internal expectations).
 
 ---
 
-## Phase 9 — Auto-Rollback + Recovery Report (Sprint 149 / v32.1.0)
+## Phase 9 — Auto-Rollback + Recovery Report (Sprint 149 / v32.1.0) ✅ Shipped
 
 **Owner:** @orchestrator + @reviewer
 **Goal:** When a critical defect survives all healers, **don't ship** — back

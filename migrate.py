@@ -30,7 +30,13 @@ from enum import IntEnum
 # ── Structured exit codes ────────────────────────────────────────────
 
 class ExitCode(IntEnum):
-    """Structured exit codes for CI/CD integration."""
+    """Structured exit codes for CI/CD integration.
+
+    With --strict flag, the quality gate overrides exit codes:
+      0 = clean (no issues)
+      1 = warnings only (shipped anyway)
+      5 = validation errors (quarantined or rolled back)
+    """
     SUCCESS = 0
     GENERAL_ERROR = 1
     FILE_NOT_FOUND = 2
@@ -1926,6 +1932,12 @@ def _add_migration_args(parser):
         '--rollback',
         action='store_true',
         help='Backup existing .pbip project before overwriting'
+    )
+
+    parser.add_argument(
+        '--strict',
+        action='store_true',
+        help='Enable strict quality gate with structured exit codes (0=clean, 1=warnings, 2=errors, 3=critical rollback)'
     )
 
     parser.add_argument(
@@ -3875,6 +3887,109 @@ def _run_governance_checks(args, source_basename):
         print(f"  ⚠ Governance checks failed: {exc}")
 
 
+def _run_rollback_gate(args, source_basename):
+    """Phase 9: Auto-rollback quality gate.
+
+    Runs after generation (and optionally after QA suite).  Evaluates
+    validation results, schema checks, and cross-artifact issues to decide
+    whether to ship, quarantine, or rollback the .pbip project.
+
+    Returns:
+        dict with 'action' ('ship'/'quarantine'/'rollback'), 'triage_path',
+        'exit_code', and 'verdict' — or None if engine import fails.
+    """
+    try:
+        from powerbi_import.rollback_engine import RollbackEngine
+    except ImportError:
+        return None
+
+    out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
+    project_dir = os.path.join(out_base, source_basename)
+    if not os.path.isdir(project_dir):
+        return None
+
+    extract_dir = os.path.join(os.path.dirname(__file__), 'tableau_export')
+    engine = RollbackEngine(project_dir, source_basename, extract_dir=extract_dir)
+
+    # Ingest QA report if available
+    qa_path = os.path.join(project_dir, 'qa_report.json')
+    engine.ingest_qa_report(qa_path)
+
+    # Ingest schema validation if available
+    try:
+        from powerbi_import.schema_validator import validate_report_dir
+        report_def_dir = None
+        for entry in os.listdir(project_dir):
+            candidate = os.path.join(project_dir, entry, 'definition')
+            if entry.endswith('.Report') and os.path.isdir(candidate):
+                report_def_dir = candidate
+                break
+        if report_def_dir:
+            schema_results = validate_report_dir(report_def_dir)
+            engine.ingest_schema_result(schema_results)
+    except (ImportError, OSError):
+        pass
+
+    # Ingest cross-artifact validation if available
+    try:
+        from powerbi_import.cross_validator import cross_validate
+        model_bim = os.path.join(project_dir, 'model.bim')
+        if os.path.isfile(model_bim):
+            with open(model_bim, 'r', encoding='utf-8') as f:
+                model = json.load(f)
+            # Build report state from definition dir
+            report_state = {}
+            if report_def_dir:
+                report_state['definition_dir'] = report_def_dir
+            cross_result = cross_validate(model, report_state)
+            engine.ingest_cross_result(cross_result)
+    except (ImportError, OSError, json.JSONDecodeError):
+        pass
+
+    # Ingest recovery report if available
+    try:
+        recovery_json = os.path.join(project_dir, f'{source_basename}_recovery.json')
+        if os.path.isfile(recovery_json):
+            with open(recovery_json, 'r', encoding='utf-8') as f:
+                recovery_data = json.load(f)
+            engine.ingest_repairs(recovery_data)
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    # Evaluate
+    verdict = engine.evaluate()
+
+    # Determine backup dir for potential rollback
+    backup_dir = None
+    if args.rollback:
+        for entry in os.listdir(out_base):
+            if entry.startswith(source_basename + '.backup_'):
+                backup_dir = os.path.join(out_base, entry)
+
+    # Execute
+    strict = getattr(args, 'strict', False)
+    source_file = getattr(args, 'tableau_file', None)
+    result = engine.execute(verdict, backup_dir=backup_dir, strict=strict,
+                            source_file=source_file)
+
+    # Print summary
+    action = result.get('action', 'ship')
+    if action == 'ship':
+        sev = verdict.severity
+        if sev == 'warning':
+            print(f"\n  Quality gate: PASSED with warnings ({len(verdict.issues)} issues)")
+        else:
+            print(f"\n  Quality gate: PASSED ({len(verdict.issues)} issues)")
+    elif action == 'quarantine':
+        print(f"\n  ⚠ Quality gate: QUARANTINED — {len(verdict.issues)} issues")
+        print(f"    Triage report: {result.get('triage_path', 'N/A')}")
+    elif action == 'rollback':
+        print(f"\n  ✗ Quality gate: ROLLED BACK — {len(verdict.issues)} critical issues")
+        print(f"    Triage package: {result.get('triage_path', 'N/A')}")
+
+    return result
+
+
 def _run_qa_suite(args, source_basename):
     """Unified QA suite: validate → auto-fix → governance (warn) → comparison → QA report JSON."""
     out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
@@ -4977,6 +5092,18 @@ def _run_single_migration(args):
     # Step 3f: Unified QA suite (--qa flag)
     if getattr(args, 'qa', False) and results.get('generation') and not args.dry_run:
         _run_qa_suite(args, source_basename)
+
+    # Step 3g: Auto-rollback quality gate (Phase 9)
+    rollback_result = None
+    if results.get('generation') and not args.dry_run:
+        rollback_result = _run_rollback_gate(args, source_basename)
+        if rollback_result and rollback_result.get('action') == 'rollback':
+            progress.fail("Quality gate: CRITICAL — rolled back")
+            return ExitCode.VALIDATION_FAILED
+        if rollback_result and rollback_result.get('action') == 'quarantine':
+            progress.fail("Quality gate: ERROR — quarantined to _FAILED/")
+            if getattr(args, 'strict', False):
+                return ExitCode.VALIDATION_FAILED
 
     # Step 4: Migration report
     progress.start("Generating migration report")
