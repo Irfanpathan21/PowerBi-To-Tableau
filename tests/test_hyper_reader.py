@@ -17,6 +17,8 @@ from tableau_export.hyper_reader import (
     generate_m_csv_reference,
     generate_m_for_hyper_table,
     generate_m_inline_table,
+    get_hyper_metadata,
+    infer_hyper_relationships,
     read_hyper,
     read_hyper_from_twbx,
 )
@@ -39,6 +41,9 @@ class TestMTypeFor(unittest.TestCase):
 
     def test_whitespace_stripped(self):
         self.assertEqual(_m_type_for('  float  '), 'Number.Type')
+
+    def test_none_returns_any(self):
+        self.assertEqual(_m_type_for(None), 'Any.Type')
 
 
 # ── _m_literal ─────────────────────────────────────────────────────
@@ -88,6 +93,28 @@ class TestMLiteral(unittest.TestCase):
 
     def test_text_escapes_quotes(self):
         self.assertEqual(_m_literal('say "hi"'), '"say ""hi"""')
+
+
+class TestHyperTableGuardrails(unittest.TestCase):
+    def test_generate_inline_table_none(self):
+        result = generate_m_inline_table(None)
+        self.assertIn('#table', result)
+
+    def test_generate_csv_reference_none(self):
+        result = generate_m_csv_reference(None)
+        self.assertIn('Csv.Document', result)
+
+    def test_generate_for_table_none(self):
+        result = generate_m_for_hyper_table(None)
+        self.assertIn('#table', result)
+
+    def test_infer_relationships_none(self):
+        self.assertEqual(infer_hyper_relationships(None), [])
+
+    def test_get_metadata_nonexistent_file(self):
+        result = get_hyper_metadata('/nonexistent/path.hyper')
+        self.assertEqual(result['tables'], [])
+        self.assertEqual(result['total_rows'], 0)
 
 
 # ── _split_values ──────────────────────────────────────────────────

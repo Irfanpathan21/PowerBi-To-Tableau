@@ -46,6 +46,11 @@ accessors and wiring them into core extractor paths.
     node, and edge payloads in graph traversal and datasource collection.
   - `tests/test_prep_flow_parser.py` now covers malformed graph structures,
     `None` nodes, and malformed `.tfl` flow dictionaries.
+- Extended Hyper reader resilience and tests:
+  - `tableau_export/hyper_reader.py` now normalizes malformed table metadata
+    in M-generation, relationship inference, and summary/report helpers.
+  - `tests/test_hyper_reader.py` now covers `None` table info, `None`
+    relationship input, and metadata fallback behavior.
 - Extraction regression suite remains green.
 
 ## v31.4.0 — Sprint 141 — Phase 1 of Zero-Error Roadmap (Pre-flight Rejection)

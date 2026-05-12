@@ -60,8 +60,20 @@ _HYPER_TO_M_TYPE = {
 
 def _m_type_for(hyper_type):
     """Map a Hyper SQL type string to a Power Query M type literal."""
-    key = hyper_type.strip().lower()
+    if not hyper_type:
+        return 'Any.Type'
+    key = str(hyper_type).strip().lower()
     return _HYPER_TO_M_TYPE.get(key, 'Any.Type')
+
+
+def _as_dict(value):
+    """Return *value* when it is a dict, otherwise an empty dict."""
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value):
+    """Return *value* when it is a list, otherwise an empty list."""
+    return value if isinstance(value, list) else []
 
 
 def _m_literal(value, m_type='Any.Type'):
@@ -582,8 +594,9 @@ def generate_m_inline_table(table_info):
     Returns:
         str: M expression text.
     """
-    columns = table_info.get('columns', [])
-    rows = table_info.get('sample_rows', [])
+    table_info = _as_dict(table_info)
+    columns = _as_list(table_info.get('columns', []))
+    rows = _as_list(table_info.get('sample_rows', []))
     table_name = table_info.get('table', 'Extract')
 
     if not columns:
@@ -592,12 +605,13 @@ def generate_m_inline_table(table_info):
     # Column type list: {{"ColName", type Text.Type}, ...}
     type_entries = []
     for col in columns:
+        col = _as_dict(col)
         m_type = _m_type_for(col.get('hyper_type', 'text'))
-        type_entries.append(f'{{"{col["name"]}", type {m_type}}}')
+        type_entries.append(f'{{"{col.get("name", "")}", type {m_type}}}')
     type_list = ', '.join(type_entries)
 
     # Row data
-    col_list = ", ".join("[{}]".format(c["name"]) for c in columns)
+    col_list = ", ".join("[{}]".format(_as_dict(c).get("name", "")) for c in columns)
     if not rows:
         return (
             f'let\n'
@@ -611,10 +625,12 @@ def generate_m_inline_table(table_info):
 
     row_lines = []
     for row in rows:
+        row = _as_dict(row)
         vals = []
         for col in columns:
+            col = _as_dict(col)
             m_type = _m_type_for(col.get('hyper_type', 'text'))
-            val = row.get(col['name'])
+            val = row.get(col.get('name', ''))
             vals.append(_m_literal(val, m_type))
         row_lines.append(f'        {{{", ".join(vals)}}}')
     rows_block = ',\n'.join(row_lines)
@@ -643,14 +659,16 @@ def generate_m_csv_reference(table_info, csv_filename=None):
     Returns:
         str: M expression text.
     """
-    columns = table_info.get('columns', [])
+    table_info = _as_dict(table_info)
+    columns = _as_list(table_info.get('columns', []))
     table_name = table_info.get('table', 'Extract')
     fname = csv_filename or f'{table_name}.csv'
 
     col_type_entries = []
     for col in columns:
+        col = _as_dict(col)
         m_type = _m_type_for(col.get('hyper_type', 'text'))
-        col_type_entries.append(f'{{"{col["name"]}", type {m_type}}}')
+        col_type_entries.append(f'{{"{col.get("name", "")}", type {m_type}}}')
     col_spec = f'{{{", ".join(col_type_entries)}}}'
 
     return (
@@ -727,6 +745,7 @@ def generate_m_for_hyper_table(table_info, csv_filename=None, row_limit=None,
         str: M expression text.
     """
     threshold = row_limit if row_limit is not None else INLINE_ROW_THRESHOLD
+    table_info = _as_dict(table_info)
     row_count = table_info.get('row_count', 0)
     if row_count <= threshold:
         return generate_m_inline_table(table_info)
@@ -754,20 +773,23 @@ def infer_hyper_relationships(tables):
         list[dict]: Each dict has ``from_table``, ``from_column``,
         ``to_table``, ``to_column``, ``cardinality``.
     """
-    if not tables or len(tables) < 2:
+    tables = _as_list(tables)
+    if len(tables) < 2:
         return []
 
     # Build column index: {col_name_lower: [(table_name, col_dict, row_count)]}
     col_index = {}
     for t in tables:
+        t = _as_dict(t)
         tname = t.get('table', '')
         row_count = t.get('row_count', 0)
-        stats = t.get('column_stats', {})
-        for col in t.get('columns', []):
-            key = col['name'].lower()
+        stats = _as_dict(t.get('column_stats', {}))
+        for col in _as_list(t.get('columns', [])):
+            col = _as_dict(col)
+            key = col.get('name', '').lower()
             distinct = None
-            if col['name'] in stats:
-                distinct = stats[col['name']].get('distinct_count')
+            if col.get('name', '') in stats:
+                distinct = _as_dict(stats[col.get('name', '')]).get('distinct_count')
             col_index.setdefault(key, []).append(
                 (tname, col, row_count, distinct)
             )
@@ -824,10 +846,10 @@ def get_hyper_metadata(file_path, max_rows=0):
     - ``format``: Which reader succeeded.
     - ``recommendations``: List of actionable strings (e.g., DirectQuery hint).
     """
-    data = read_hyper(file_path, max_rows=max_rows)
-    tables = data.get('tables', [])
-    total_rows = sum(t.get('row_count', 0) for t in tables)
-    metadata = data.get('metadata', {})
+    data = _as_dict(read_hyper(file_path, max_rows=max_rows))
+    tables = _as_list(data.get('tables', []))
+    total_rows = sum(_as_dict(t).get('row_count', 0) for t in tables)
+    metadata = _as_dict(data.get('metadata', {}))
 
     recommendations = []
     if total_rows > 10_000_000:
@@ -840,9 +862,10 @@ def get_hyper_metadata(file_path, max_rows=0):
         )
 
     for t in tables:
-        col_stats = t.get('column_stats', {})
+        t = _as_dict(t)
+        col_stats = _as_dict(t.get('column_stats', {}))
         for cname, st in col_stats.items():
-            dc = st.get('distinct_count')
+            dc = _as_dict(st).get('distinct_count')
             if dc is not None and dc > 1_000_000:
                 recommendations.append(
                     f'Column "{cname}" in "{t["table"]}" has {dc:,} distinct values '
@@ -858,10 +881,10 @@ def get_hyper_metadata(file_path, max_rows=0):
         'last_modified': metadata.get('last_modified'),
         'tables': [
             {
-                'name': t.get('table', ''),
-                'row_count': t.get('row_count', 0),
-                'column_count': t.get('column_count', 0),
-                'column_stats': t.get('column_stats', {}),
+                'name': _as_dict(t).get('table', ''),
+                'row_count': _as_dict(t).get('row_count', 0),
+                'column_count': _as_dict(t).get('column_count', 0),
+                'column_stats': _as_dict(t).get('column_stats', {}),
             }
             for t in tables
         ],
