@@ -171,6 +171,25 @@ def run_extraction(tableau_file, hyper_max_rows=None):
         print(f"Error: Tableau file not found: {resolved}")
         return False
 
+    # Phase 1 — Pre-flight rejection (Sprint 141 / v31.4.0).
+    # Refuse early when the workbook is doomed to fail. Skip for prep flows
+    # and standalone datasource files (they go through their own pipelines).
+    if ext in ('.twb', '.twbx'):
+        try:
+            from powerbi_import.preflight import run_preflight
+            preflight = run_preflight(tableau_file)
+            if preflight.warnings or preflight.advisories or preflight.blockers:
+                print(preflight.format_console())
+            if preflight.blockers and not os.environ.get('TTPBI_FORCE'):
+                logger.error("Pre-flight failed (%d blocker(s))",
+                             len(preflight.blockers))
+                print("\nMigration refused. Set TTPBI_FORCE=1 to override "
+                      "(at your own risk).")
+                return False
+        except Exception:
+            # Pre-flight is advisory only — never block on its own bugs
+            logger.debug("Pre-flight check raised", exc_info=True)
+
     print(f"Source file: {tableau_file}")
     _stats.app_name = os.path.splitext(os.path.basename(tableau_file))[0]
 

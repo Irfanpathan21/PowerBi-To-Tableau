@@ -1,5 +1,54 @@
 # Changelog
 
+## v31.4.0 — Sprint 141 — Phase 1 of Zero-Error Roadmap (Pre-flight Rejection)
+
+Kicks off the **10-phase Zero-Error Roadmap** documented in
+[`docs/ZERO_ERROR_ROADMAP.md`](docs/ZERO_ERROR_ROADMAP.md). Goal: reach
+≥ 99 % Zero-Touch Open Rate (workbooks that open in PBI Desktop with
+0 errors / 0 warnings / 0 missing visuals on the first try).
+
+### New module: `powerbi_import/preflight.py`
+
+Refuses migration **before** extraction when the workbook is doomed to
+fail. Pure stdlib, < 200 ms, never mutates the input. Three severity
+levels: `BLOCKER` (hard exit), `WARNING` (proceed but flag), `ADVISORY`
+(informational).
+
+| Check | Severity | Catches |
+|-------|----------|---------|
+| `empty_path` / `null_byte_path` / `missing_file` / `unsupported_extension` | BLOCKER | bad input paths |
+| `corrupt_archive` | BLOCKER | not a valid ZIP |
+| `zip_traversal` | BLOCKER | ZIP-slip / absolute paths inside archive (security) |
+| `encrypted_workbook` | BLOCKER | password-protected ZIP entries |
+| `corrupt_xml` / `empty_xml` / `missing_twb` | BLOCKER | malformed/empty/missing `.twb` payload |
+| `unsupported_connector` | BLOCKER | Essbase, Splunk legacy, Hive 0.x, MSOLAP cube, Alibaba MaxCompute |
+| `newer_tableau_version` | WARNING | source-build > 2024.3 |
+| `missing_extract` | WARNING | `<extract>` references absent `.hyper` |
+| `large_workbook` | ADVISORY | > 500 MB |
+| `many_worksheets` | ADVISORY | > 1,000 worksheets |
+
+### Wired into `migrate.py`
+
+`run_extraction()` now calls `run_preflight()` for every `.twb`/`.twbx`
+input. Blockers print a formatted summary and abort with exit code 1.
+Set the `TTPBI_FORCE=1` env var to override (escape hatch for power users).
+Pre-flight failures of its own never block migration — defensive.
+
+### Tests
+
+30 new unit tests in [`tests/test_preflight.py`](tests/test_preflight.py)
+cover every check, the `PreflightResult` dataclass surface (severity
+buckets, `as_dict`, `format_console`), happy paths for `.twb` and `.twbx`,
+ZIP-slip / encryption / corruption blockers, and the missing-extract
+warning path. Includes a custom encrypted-ZIP forger (stdlib `zipfile`
+can't write encryption flags itself).
+
+### Aggregate
+
+- **+30 tests** (7,628 → **7,658 passing**, 0 regressions)
+- **New module** `preflight.py` (~340 lines, ships at high coverage)
+- **Phase 1 of 10** complete; 9 phases remain (Sprints 142–150)
+
 ## v31.3.0 — Sprint 140 — Self-Healing v3.4 (PBIR / report-side) + Coverage uplift
 
 Two-pronged release:
