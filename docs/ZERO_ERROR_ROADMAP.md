@@ -667,23 +667,388 @@ Migration Completeness Score.
 
 | Sprint | Version | Stream | Theme | Status |
 |--------|---------|--------|-------|--------|
-| 151 | v33.1.0 | A | Advanced Visual Types | ⬚ Not started |
-| 152 | v33.2.0 | A | Map & Spatial Intelligence | ⬚ Not started |
-| 153 | v33.3.0 | A | Rich Formatting & Interactivity | ⬚ Not started |
-| 154 | v33.4.0 | A | Table & Matrix Depth | ⬚ Not started |
-| 155 | v33.5.0 | B | Cloud & SaaS Connectors | ⬚ Not started |
-| 156 | v33.6.0 | B | Connection String Intelligence | ⬚ Not started |
-| 157 | v33.7.0 | B | Hyper & Extract Completeness | ⬚ Not started |
-| 158 | v33.8.0 | C | Spatial & Regex Gap Closure | ⬚ Not started |
-| 159 | v33.9.0 | C | Table Calculation Depth | ⬚ Not started |
-| 160 | v33.10.0 | C | LOD & Security Hardening | ⬚ Not started |
-| 161 | v34.1.0 | D | Server Discovery & Metadata | ⬚ Not started |
-| 162 | v34.2.0 | D | Tableau Cloud & OAuth | ⬚ Not started |
-| 163 | v34.3.0 | D | Schedule & Subscription Migration | ⬚ Not started |
-| 164 | v34.4.0 | E | Negative & Edge-Case Tests | ⬚ Not started |
-| 165 | v34.5.0 | E | Property-Based & Fuzzing | ⬚ Not started |
-| 166 | v34.6.0 | E | Real-World Corpus (50+) | ⬚ Not started |
-| 167 | v34.7.0 | F | Migration Planner | ⬚ Not started |
-| 168 | v34.8.0 | F | Incremental & Live Sync | ⬚ Not started |
-| 169 | v34.9.0 | F | Documentation & DX | ⬚ Not started |
-| 170 | v34.10.0 | — | v34.0.0 Release | ⬚ Not started |
+| 151 | v33.1.0 | A | Advanced Visual Types | ✅ Shipped |
+| 152 | v33.2.0 | A | Map & Spatial Intelligence | ✅ Shipped |
+| 153 | v33.3.0 | A | Rich Formatting & Interactivity | ✅ Shipped |
+| 154 | v33.4.0 | A | Table & Matrix Depth | ✅ Shipped |
+| 155 | v33.5.0 | B | Cloud & SaaS Connectors | ✅ Shipped |
+| 156 | v33.6.0 | B | Connection String Intelligence | ✅ Shipped |
+| 157 | v33.7.0 | B | Hyper & Extract Completeness | ✅ Shipped |
+| 158 | v33.8.0 | C | Spatial & Regex Gap Closure | ✅ Shipped |
+| 159 | v33.9.0 | C | Table Calculation Depth | ✅ Shipped |
+| 160 | v33.10.0 | C | LOD & Security Hardening | ✅ Shipped |
+| 161 | v34.1.0 | D | Server Discovery & Metadata | ✅ Shipped |
+| 162 | v34.2.0 | D | Tableau Cloud & OAuth | ✅ Shipped |
+| 163 | v34.3.0 | D | Schedule & Subscription Migration | ✅ Shipped |
+| 164 | v34.4.0 | E | Negative & Edge-Case Tests | ✅ Shipped |
+| 165 | v34.5.0 | E | Property-Based & Fuzzing | ✅ Shipped |
+| 166 | v34.6.0 | E | Real-World Corpus (50+) | ✅ Shipped |
+| 167 | v34.7.0 | F | Migration Planner | ✅ Shipped |
+| 168 | v34.8.0 | F | Incremental & Live Sync | ✅ Shipped |
+| 169 | v34.9.0 | F | Documentation & DX | ✅ Shipped |
+| 170 | v34.10.0 | — | v34.0.0 Release | ✅ Shipped |
+
+---
+
+## v35.0.0 — Precision & Polish (Sprints 171–190)
+
+**Goal:** Close remaining fidelity gaps, expand connector coverage,
+harden edge-case handling, and automate quality gates in CI.
+
+**Baseline (post v34.0.0):**
+- 8,088 tests passing, 96.2 % coverage
+- 128 visual type mappings, 79 connector entries, 125+ DAX conversions
+- 27 Tableau Server API endpoints
+- 0 known regressions on bug-bash corpus
+
+### Streams
+
+| Stream | Sprints | Theme |
+|--------|---------|-------|
+| G — Visual Precision | 171–174 | Sparkline variants, motion-chart workaround, nested container solver, rich tooltip preservation |
+| H — Connector Expansion | 175–178 | SaaS connectors, TDE deprecation path, query result caching, composite model depth |
+| I — DAX & M Hardening | 179–182 | WINDOW frame boundaries, complex regex via Python visual, calculated table partitioning, schema auto-healing |
+| J — Enterprise Automation | 183–186 | Preceptorship CI/CD, automated quality gates, Tableau extension ecosystem, cross-cloud data blending |
+| K — DX & Ecosystem | 187–190 | Web UI wizard, VS Code extension, REST API v2, plugin marketplace, v35.0.0 release |
+
+---
+
+### Sprint 171 — Sparkline Variants (Stream G)
+
+**Owner:** @visual
+
+| ID | Task | Agent |
+|----|------|-------|
+| 171.1 | Area sparkline visual type (areaSparkline config template) | @visual |
+| 171.2 | Bar/column sparkline variant (columnSparkline template) | @visual |
+| 171.3 | Win/loss sparkline type (binary bar encoding) | @visual |
+| 171.4 | Sparkline conditional formatting (color rules from mark encoding) | @visual |
+| 171.5 | Sparkline axis range propagation (min/max from Tableau axes) | @visual |
+| 171.6 | Tests for all sparkline variants (30 tests) | @tester |
+
+---
+
+### Sprint 172 — Motion Chart Workaround (Stream G)
+
+**Owner:** @visual, @orchestrator
+
+| ID | Task | Agent |
+|----|------|-------|
+| 172.1 | Detect play-axis marks in Tableau XML (page shelf with animation) | @extractor |
+| 172.2 | Generate PBI bookmark sequence per time frame (play axis → bookmarks) | @visual |
+| 172.3 | Action button with auto-advance navigation for bookmark sequence | @visual |
+| 172.4 | Migration note annotation for motion chart approximation | @semantic |
+| 172.5 | Assessment warning for motion chart (YELLOW grade) | @assessor |
+| 172.6 | Tests for motion chart bookmark generation (25 tests) | @tester |
+
+---
+
+### Sprint 173 — Nested Container Solver (Stream G)
+
+**Owner:** @visual
+
+| ID | Task | Agent |
+|----|------|-------|
+| 173.1 | Recursive layout constraint solver for 4+ level nesting | @visual |
+| 173.2 | Overflow detection and auto-resize fallback | @visual |
+| 173.3 | Z-order preservation for overlapping containers | @visual |
+| 173.4 | Padding/margin inheritance from parent containers | @visual |
+| 173.5 | Integration with existing dashboard layout engine | @visual |
+| 173.6 | Tests for deep nesting (5-level, 6-level) with pixel-accurate assertions (30 tests) | @tester |
+
+---
+
+### Sprint 174 — Rich Tooltip Preservation (Stream G)
+
+**Owner:** @visual, @semantic
+
+| ID | Task | Agent |
+|----|------|-------|
+| 174.1 | Extract rich tooltip HTML content from Tableau worksheets | @extractor |
+| 174.2 | Convert tooltip HTML → PBI report tooltip page with textbox visuals | @visual |
+| 174.3 | Field-reference tooltips → PBI visual tooltip data bindings | @visual |
+| 174.4 | Custom tooltip formatting (font, color, alignment) transfer | @visual |
+| 174.5 | Tooltip page auto-sizing from Tableau tooltip dimensions | @visual |
+| 174.6 | Tests for rich tooltip migration (25 tests) | @tester |
+
+---
+
+### Sprint 175 — SaaS Connector Expansion (Stream H)
+
+**Owner:** @wiring
+
+| ID | Task | Agent |
+|----|------|-------|
+| 175.1 | Domo connector M query generator | @wiring |
+| 175.2 | Sisense connector M query generator | @wiring |
+| 175.3 | Looker connector M query generator | @wiring |
+| 175.4 | Qlik connector M query generator | @wiring |
+| 175.5 | Connection string rewriting for all new connectors | @wiring |
+| 175.6 | Tests for new SaaS connectors (40 tests) | @tester |
+
+---
+
+### Sprint 176 — TDE Deprecation & Legacy Handling (Stream H)
+
+**Owner:** @extractor
+
+| ID | Task | Agent |
+|----|------|-------|
+| 176.1 | TDE format detection (pre-2018 extracts) with structured error message | @extractor |
+| 176.2 | Auto-generate migration instruction for TDE → Hyper conversion | @extractor |
+| 176.3 | Assessment RED grade for TDE-only workbooks | @assessor |
+| 176.4 | Fallback: extract column schema from TDE XML metadata (no row data) | @extractor |
+| 176.5 | Documentation: TDE deprecation guide with Tableau Desktop re-save steps | @orchestrator |
+| 176.6 | Tests for TDE detection and fallback (20 tests) | @tester |
+
+---
+
+### Sprint 177 — Query Result Caching (Stream H)
+
+**Owner:** @semantic
+
+| ID | Task | Agent |
+|----|------|-------|
+| 177.1 | Auto-detect large model threshold (>50 tables or >500 measures) | @semantic |
+| 177.2 | Generate query caching annotations in TMDL (DiscourageCompositeModels) | @semantic |
+| 177.3 | Import mode optimization hints (prefer Import over DQ for large models) | @semantic |
+| 177.4 | Strategy advisor update: factor model size into mode recommendation | @assessor |
+| 177.5 | Aggregation table auto-generation for DirectQuery models | @semantic |
+| 177.6 | Tests for caching and aggregation logic (25 tests) | @tester |
+
+---
+
+### Sprint 178 — Composite Model Depth (Stream H)
+
+**Owner:** @semantic
+
+| ID | Task | Agent |
+|----|------|-------|
+| 178.1 | Aggregation precedence rules for composite models | @semantic |
+| 178.2 | Dual storage mode detection (Import + DQ tables) | @semantic |
+| 178.3 | Aggregation relationship bridging (detail → agg table mapping) | @semantic |
+| 178.4 | TMDL storageMode annotation per table (Import/DirectQuery/Dual) | @semantic |
+| 178.5 | Composite model validation in validator.py | @semantic |
+| 178.6 | Tests for composite model scenarios (30 tests) | @tester |
+
+---
+
+### Sprint 179 — WINDOW Frame Boundaries (Stream I)
+
+**Owner:** @dax
+
+| ID | Task | Agent |
+|----|------|-------|
+| 179.1 | Parse WINDOW_* frame specs (ROWS BETWEEN n PRECEDING AND m FOLLOWING) | @dax |
+| 179.2 | DAX OFFSET/WINDOW function generation (PBI 2023+ native window) | @dax |
+| 179.3 | Fallback CALCULATE pattern for pre-2023 PBI targets | @dax |
+| 179.4 | Frame boundary validation (negative offsets, UNBOUNDED) | @dax |
+| 179.5 | WINDOW_PERCENTILE and WINDOW_STDEV conversion | @dax |
+| 179.6 | Tests for all frame boundary combinations (40 tests) | @tester |
+
+---
+
+### Sprint 180 — Complex Regex via Python Visual (Stream I)
+
+**Owner:** @dax, @visual
+
+| ID | Task | Agent |
+|----|------|-------|
+| 180.1 | Detect unsupported regex patterns (backreferences, lookahead, lookbehind) | @dax |
+| 180.2 | Generate Python script visual with `re` module for complex regex | @visual |
+| 180.3 | Python visual input column wiring from regex source fields | @visual |
+| 180.4 | Fallback: simplified regex → DAX CONTAINSSTRING approximation | @dax |
+| 180.5 | Migration note for regex accuracy loss | @semantic |
+| 180.6 | Tests for regex complexity detection and Python visual gen (30 tests) | @tester |
+
+---
+
+### Sprint 181 — Calculated Table Partitioning (Stream I)
+
+**Owner:** @semantic, @wiring
+
+| ID | Task | Agent |
+|----|------|-------|
+| 181.1 | Detect DAX calculated table expressions (SELECTCOLUMNS, SUMMARIZE, etc.) | @dax |
+| 181.2 | Convert DAX calculated tables → M partition expressions | @wiring |
+| 181.3 | Table dependency graph for partition ordering | @semantic |
+| 181.4 | Circular dependency detection and breaking | @semantic |
+| 181.5 | TMDL partition type validation (M vs DAX vs calculated) | @semantic |
+| 181.6 | Tests for calculated table conversion (25 tests) | @tester |
+
+---
+
+### Sprint 182 — Schema Auto-Healing (Stream I)
+
+**Owner:** @semantic, @orchestrator
+
+| ID | Task | Agent |
+|----|------|-------|
+| 182.1 | Auto-remediation rules for schema drift (add missing columns, update types) | @semantic |
+| 182.2 | Drift resolution strategies: rename, add, remove, retype | @semantic |
+| 182.3 | Incremental migration integration (re-run only affected tables) | @orchestrator |
+| 182.4 | Schema healing audit trail in recovery_report.py | @semantic |
+| 182.5 | Dry-run mode for schema healing (preview changes without applying) | @orchestrator |
+| 182.6 | Tests for auto-healing scenarios (30 tests) | @tester |
+
+---
+
+### Sprint 183 — Preceptorship CI/CD Integration (Stream J)
+
+**Owner:** @reviewer, @orchestrator
+
+| ID | Task | Agent |
+|----|------|-------|
+| 183.1 | GitHub Actions workflow for preceptor quality gate | @orchestrator |
+| 183.2 | JUnit XML output from preceptor scorecard for CI reporting | @reviewer |
+| 183.3 | Minimum score threshold configuration (fail CI below 3★) | @reviewer |
+| 183.4 | Per-workbook preceptor results in CI summary | @reviewer |
+| 183.5 | Slack/Teams webhook notification for quality regressions | @orchestrator |
+| 183.6 | Tests for CI integration (20 tests) | @tester |
+
+---
+
+### Sprint 184 — Automated Quality Gates (Stream J)
+
+**Owner:** @reviewer
+
+| ID | Task | Agent |
+|----|------|-------|
+| 184.1 | Pre-commit hook for TMDL/PBIR schema validation | @reviewer |
+| 184.2 | DAX syntax validation via grammar parser (offline, no PBI Desktop) | @dax |
+| 184.3 | M query syntax validation via tokenizer | @wiring |
+| 184.4 | Relationship integrity checks (orphan columns, missing keys) | @semantic |
+| 184.5 | Auto-fix for common validation failures (missing commas, unbalanced quotes) | @reviewer |
+| 184.6 | Tests for quality gate automation (25 tests) | @tester |
+
+---
+
+### Sprint 185 — Tableau Extension Ecosystem (Stream J)
+
+**Owner:** @visual, @extractor
+
+| ID | Task | Agent |
+|----|------|-------|
+| 185.1 | Tableau extension manifest parser (.trex files) | @extractor |
+| 185.2 | Extension → PBI custom visual GUID mapping (expand to 25+ extensions) | @visual |
+| 185.3 | Extension data binding extraction (worksheet, fields, settings) | @extractor |
+| 185.4 | Fallback visual type for unmapped extensions | @visual |
+| 185.5 | Extension migration assessment (supported/partial/unsupported) | @assessor |
+| 185.6 | Tests for extension parsing and mapping (30 tests) | @tester |
+
+---
+
+### Sprint 186 — Cross-Cloud Data Blending (Stream J)
+
+**Owner:** @wiring, @semantic
+
+| ID | Task | Agent |
+|----|------|-------|
+| 186.1 | Multi-source data blend detection in Tableau XML | @extractor |
+| 186.2 | M query mashup for cross-source blending (Table.NestedJoin across connections) | @wiring |
+| 186.3 | Blend relationship → PBI composite model relationship | @semantic |
+| 186.4 | Performance advisory for cross-source blends (DQ vs Import recommendation) | @assessor |
+| 186.5 | Blend field mapping preservation (primary vs secondary datasource) | @wiring |
+| 186.6 | Tests for cross-cloud blending scenarios (30 tests) | @tester |
+
+---
+
+### Sprint 187 — Web UI Migration Wizard (Stream K)
+
+**Owner:** @orchestrator
+
+| ID | Task | Agent |
+|----|------|-------|
+| 187.1 | Flask/FastAPI web server with file upload endpoint | @orchestrator |
+| 187.2 | Step-by-step wizard UI (upload → assess → configure → generate → download) | @orchestrator |
+| 187.3 | Real-time progress via Server-Sent Events (SSE) | @orchestrator |
+| 187.4 | Migration result preview (visual comparison, DAX listing) | @orchestrator |
+| 187.5 | Download .pbip as ZIP from browser | @orchestrator |
+| 187.6 | Tests for web API endpoints (20 tests) | @tester |
+
+---
+
+### Sprint 188 — VS Code Extension (Stream K)
+
+**Owner:** @orchestrator
+
+| ID | Task | Agent |
+|----|------|-------|
+| 188.1 | VS Code extension scaffold (TypeScript, vscode API) | @orchestrator |
+| 188.2 | Command palette: "Migrate Tableau Workbook" | @orchestrator |
+| 188.3 | TreeView for migration artifacts (pages, visuals, measures) | @orchestrator |
+| 188.4 | Inline DAX/M preview in editor | @orchestrator |
+| 188.5 | Status bar progress indicator during migration | @orchestrator |
+| 188.6 | Extension marketplace packaging and publishing config | @orchestrator |
+
+---
+
+### Sprint 189 — REST API v2 & Plugin Marketplace (Stream K)
+
+**Owner:** @orchestrator
+
+| ID | Task | Agent |
+|----|------|-------|
+| 189.1 | REST API v2 with OpenAPI spec (batch, async, webhooks) | @orchestrator |
+| 189.2 | Plugin marketplace web frontend (browse, install, rate) | @orchestrator |
+| 189.3 | Community plugin submission workflow (PR-based, validation) | @orchestrator |
+| 189.4 | Plugin versioning and dependency resolution | @orchestrator |
+| 189.5 | API authentication (API key, OAuth2) | @orchestrator |
+| 189.6 | Tests for API v2 endpoints and plugin system (30 tests) | @tester |
+
+---
+
+### Sprint 190 — v35.0.0 Release (Stream K)
+
+**Owner:** all agents
+
+| ID | Task | Agent |
+|----|------|-------|
+| 190.1 | Full bug-bash corpus re-validation (50+ workbooks) | @tester |
+| 190.2 | CHANGELOG v35.0.0 entry | @orchestrator |
+| 190.3 | Version bump to 35.0.0 | @orchestrator |
+| 190.4 | Documentation refresh (README, FAQ, guides) | @orchestrator |
+| 190.5 | Performance regression suite (no >10% slowdown from v34) | @tester |
+| 190.6 | Tag and release v35.0.0 | @orchestrator |
+
+---
+
+### v35.0.0 Success Criteria
+
+| Metric | Target | Owner |
+|--------|--------|-------|
+| Visual type coverage | 135+ (from 128) | @visual |
+| Connector entries | 90+ (from 79) | @wiring |
+| DAX conversion patterns | 140+ (from 125) | @dax |
+| WINDOW frame accuracy | Full frame spec support | @dax |
+| Nested container depth | 6+ levels without precision loss | @visual |
+| TDE handling | Structured error + schema fallback | @extractor |
+| Preceptor CI/CD | Automated quality gate in GitHub Actions | @reviewer |
+| Extension mappings | 25+ (from 16) | @visual |
+| Tests | **8,600+** | @tester |
+| Bug-bash pass rate | **≥ 99.5 %** | @tester |
+
+### Progress Tracker (Sprints 171–190)
+
+| Sprint | Version | Stream | Theme | Status |
+|--------|---------|--------|-------|--------|
+| 171 | v35.1.0 | G | Sparkline Variants | ⬚ Not started |
+| 172 | v35.2.0 | G | Motion Chart Workaround | ⬚ Not started |
+| 173 | v35.3.0 | G | Nested Container Solver | ⬚ Not started |
+| 174 | v35.4.0 | G | Rich Tooltip Preservation | ⬚ Not started |
+| 175 | v35.5.0 | H | SaaS Connector Expansion | ⬚ Not started |
+| 176 | v35.6.0 | H | TDE Deprecation & Legacy | ⬚ Not started |
+| 177 | v35.7.0 | H | Query Result Caching | ⬚ Not started |
+| 178 | v35.8.0 | H | Composite Model Depth | ⬚ Not started |
+| 179 | v35.9.0 | I | WINDOW Frame Boundaries | ⬚ Not started |
+| 180 | v35.10.0 | I | Complex Regex via Python | ⬚ Not started |
+| 181 | v35.11.0 | I | Calculated Table Partitioning | ⬚ Not started |
+| 182 | v35.12.0 | I | Schema Auto-Healing | ⬚ Not started |
+| 183 | v35.13.0 | J | Preceptorship CI/CD | ⬚ Not started |
+| 184 | v35.14.0 | J | Automated Quality Gates | ⬚ Not started |
+| 185 | v35.15.0 | J | Tableau Extension Ecosystem | ⬚ Not started |
+| 186 | v35.16.0 | J | Cross-Cloud Data Blending | ⬚ Not started |
+| 187 | v35.17.0 | K | Web UI Migration Wizard | ⬚ Not started |
+| 188 | v35.18.0 | K | VS Code Extension | ⬚ Not started |
+| 189 | v35.19.0 | K | REST API v2 & Plugin Marketplace | ⬚ Not started |
+| 190 | v35.20.0 | K | v35.0.0 Release | ⬚ Not started |
