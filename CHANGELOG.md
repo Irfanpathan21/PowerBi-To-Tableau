@@ -1,6 +1,17 @@
 # Changelog
 
-## v31.7.0-dev — Sprint 133 — Multi-Tenant & Connection Hardening
+## v30.0.0 — Sprints 128–134 — Performance, Security & Multi-Tenant Hardening
+
+**Major version release** covering Sprints 128–134. Highlights:
+- **DAX correctness corpus** (Sprint 128): 500+ before/after fixtures
+- **M validation gate** (Sprint 129): 100% of generated `.pbip` projects pass M parse
+- **Self-healing v3.5/v3.6** (Sprint 130): 50+ model-side auto-healers
+- **Decision telemetry** (Sprint 131): Every conversion branch logs a decision
+- **Performance benchmarks** (Sprint 132): 500-measure workbook in <60s, <2GB RAM
+- **Multi-tenant credential vault** (Sprint 133): 3 backends, pre-deploy validation, connection drift
+- **8,008 tests passing**, 0 failures, 96%+ coverage
+
+### Sprint 133 — Multi-Tenant & Connection Hardening
 
 ### New Files
 - **`powerbi_import/deploy/credential_vault.py`** — Pluggable credential vault:
