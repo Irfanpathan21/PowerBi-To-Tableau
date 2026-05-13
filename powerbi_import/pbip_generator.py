@@ -1257,7 +1257,10 @@ class PowerBIProjectGenerator:
         
         # Build field mapping from Tableau to Power BI model
         self._build_field_mapping(converted_objects)
-        
+
+        # Initialize motion chart bookmarks list (may be populated by dashboard pages)
+        self._motion_chart_bookmarks = []
+
         report_dir = os.path.join(project_dir, f"{report_name}.Report")
         
         # Clean previous content (with retries for OneDrive sync locks)
@@ -1431,6 +1434,9 @@ class PowerBIProjectGenerator:
                 if dz_vis:
                     pg_name = page_names[db_idx] if db_idx < len(page_names) else ''
                     all_bookmarks.extend(self._create_swap_bookmarks(dz_vis, pg_name))
+        # Motion chart bookmarks from Pages shelf
+        if self._motion_chart_bookmarks:
+            all_bookmarks.extend(self._motion_chart_bookmarks)
         if all_bookmarks:
             self._write_bookmark_files(def_dir, all_bookmarks)
 
@@ -1595,6 +1601,7 @@ class PowerBIProjectGenerator:
         page_names = []
         tooltip_page_map = {}
 
+        self._motion_chart_bookmarks = []
         if dashboards:
             page_names = self._create_dashboard_pages(
                 pages_dir, dashboards, worksheets, converted_objects, tooltip_page_map)
@@ -1610,6 +1617,9 @@ class PowerBIProjectGenerator:
                 if dz_vis:
                     pg_name = page_names[db_idx] if db_idx < len(page_names) else ''
                     all_bookmarks.extend(self._create_swap_bookmarks(dz_vis, pg_name))
+        # Motion chart bookmarks from Pages shelf
+        if self._motion_chart_bookmarks:
+            all_bookmarks.extend(self._motion_chart_bookmarks)
         if all_bookmarks:
             self._write_bookmark_files(def_dir, all_bookmarks)
 
@@ -1807,6 +1817,10 @@ class PowerBIProjectGenerator:
                     visuals_dir, pages_shelf, scale_x, scale_y,
                     visual_count, converted_objects)
                 visual_count += 1
+                # Generate motion chart bookmarks for this dashboard
+                self._motion_chart_bookmarks.extend(
+                    self._create_motion_chart_bookmarks(
+                        pages_shelf, page_display_name, db.get('name', '')))
 
             # Power BI shows page tabs natively -- no explicit navigator needed
 
@@ -2944,6 +2958,31 @@ class PowerBIProjectGenerator:
                 }
                 bookmarks.append(bookmark)
         return bookmarks
+
+    def _create_motion_chart_bookmarks(self, pages_shelf, page_name, worksheet_name=''):
+        """Create bookmark sequence from Pages shelf for motion chart approximation.
+
+        Generates one bookmark per known value of the Pages shelf field,
+        simulating Tableau's play-axis animation as a bookmark sequence.
+
+        Args:
+            pages_shelf: Pages shelf dict with 'field' and optional 'values'.
+            page_name: PBI page name for the bookmark.
+            worksheet_name: Source Tableau worksheet name for labeling.
+
+        Returns:
+            list[dict]: Motion chart bookmarks.
+        """
+        from powerbi_import.visual_generator import _build_motion_chart_bookmarks
+        field = pages_shelf.get('field', '')
+        if not field:
+            return []
+        values = pages_shelf.get('values', [])
+        if not values:
+            # Generate placeholder frames when no values are available
+            values = [f"Frame {i+1}" for i in range(5)]
+        return _build_motion_chart_bookmarks(
+            field, values, page_name, worksheet_name)
 
     def _create_swap_bookmarks(self, dynamic_zones, page_name):
         """Create bookmarks from dynamic zone visibility (sheet-swap containers).

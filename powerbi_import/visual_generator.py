@@ -85,6 +85,15 @@ VISUAL_TYPE_MAP = {
     "stacked-area": "stackedAreaChart",
     "100stackedareachart": "hundredPercentStackedAreaChart",
     "sparkline": "lineChart",
+    "areasparkline": "areaChart",
+    "area-sparkline": "areaChart",
+    "barsparkline": "clusteredColumnChart",
+    "bar-sparkline": "clusteredColumnChart",
+    "columnsparkline": "clusteredColumnChart",
+    "column-sparkline": "clusteredColumnChart",
+    "winlosssparkline": "clusteredColumnChart",
+    "winloss-sparkline": "clusteredColumnChart",
+    "winloss": "clusteredColumnChart",
 
     # ── Combo ─────────────────────────────────────────────────
     "combo": "lineStackedColumnComboChart",
@@ -406,8 +415,46 @@ def resolve_custom_visual_type(tableau_mark, use_custom_visuals=True):
 # Sparkline Configuration Builder
 # ═══════════════════════════════════════════════════════════════════
 
+# Sparkline type constants
+SPARKLINE_LINE = 'line'
+SPARKLINE_COLUMN = 'column'
+SPARKLINE_AREA = 'area'
+SPARKLINE_WINLOSS = 'winloss'
+
+# Map Tableau sparkline-like mark types to sparkline subtypes
+_SPARKLINE_SUBTYPE_MAP = {
+    'sparkline': SPARKLINE_LINE,
+    'areasparkline': SPARKLINE_AREA,
+    'area-sparkline': SPARKLINE_AREA,
+    'barsparkline': SPARKLINE_COLUMN,
+    'bar-sparkline': SPARKLINE_COLUMN,
+    'columnsparkline': SPARKLINE_COLUMN,
+    'column-sparkline': SPARKLINE_COLUMN,
+    'winlosssparkline': SPARKLINE_WINLOSS,
+    'winloss-sparkline': SPARKLINE_WINLOSS,
+    'winloss': SPARKLINE_WINLOSS,
+}
+
+
+def detect_sparkline_subtype(mark_class):
+    """Detect sparkline subtype from Tableau mark class string.
+
+    Args:
+        mark_class: Tableau mark class (e.g. 'sparkline', 'area-sparkline').
+
+    Returns:
+        str or None: Sparkline subtype ('line', 'column', 'area', 'winloss')
+        or None if not a sparkline mark.
+    """
+    if not mark_class:
+        return None
+    key = mark_class.lower().replace(' ', '').replace('_', '')
+    return _SPARKLINE_SUBTYPE_MAP.get(key)
+
+
 def _build_sparkline_config(measure_name, table_name, date_column='Date',
-                            sparkline_type='line', color='#4472C4'):
+                            sparkline_type='line', color='#4472C4',
+                            color_rules=None, axis_min=None, axis_max=None):
     """Build a sparkline conditional formatting config for table/matrix cells.
 
     Power BI supports inline sparklines in table/matrix visuals via
@@ -417,16 +464,29 @@ def _build_sparkline_config(measure_name, table_name, date_column='Date',
         measure_name: Name of the measure column to sparkline.
         table_name: Source table name.
         date_column: X-axis date/category column.
-        sparkline_type: 'line' or 'column'.
+        sparkline_type: 'line', 'column', 'area', or 'winloss'.
         color: Sparkline line/fill color.
+        color_rules: Optional list of dicts with keys: threshold, color.
+            For conditional formatting of sparkline points/bars.
+        axis_min: Optional numeric minimum for the sparkline Y axis.
+        axis_max: Optional numeric maximum for the sparkline Y axis.
 
     Returns:
         dict: PBIR-compatible sparkline configuration.
     """
-    return {
+    # Normalize sparkline type: 'area' → 'line' with fill, 'winloss' → 'column'
+    pbi_sparkline_type = sparkline_type
+    is_area = sparkline_type == SPARKLINE_AREA
+    is_winloss = sparkline_type == SPARKLINE_WINLOSS
+    if is_area:
+        pbi_sparkline_type = 'line'
+    elif is_winloss:
+        pbi_sparkline_type = 'column'
+
+    config = {
         "id": f"sparkline_{measure_name}",
         "type": "sparkline",
-        "sparklineType": sparkline_type,
+        "sparklineType": pbi_sparkline_type,
         "field": {
             "Column": {
                 "Expression": {
@@ -451,6 +511,505 @@ def _build_sparkline_config(measure_name, table_name, date_column='Date',
         "showFirstPoint": False,
         "lineWidth": 2,
     }
+
+    # Area sparkline: enable fill under the line
+    if is_area:
+        config["fillColor"] = {"solid": {"color": color}}
+        config["fillOpacity"] = 30
+
+    # Win/loss sparkline: binary bars (positive=win, negative=loss)
+    if is_winloss:
+        config["showHighPoint"] = False
+        config["showLowPoint"] = False
+        positive_color = color
+        negative_color = '#D64550'
+        if color_rules:
+            for rule in color_rules:
+                if rule.get('threshold', 0) >= 0:
+                    positive_color = rule.get('color', positive_color)
+                else:
+                    negative_color = rule.get('color', negative_color)
+        config["lineColor"] = {"solid": {"color": positive_color}}
+        config["negativeColor"] = {"solid": {"color": negative_color}}
+        config["winLossMode"] = True
+
+    # Conditional formatting color rules (non-winloss)
+    if color_rules and not is_winloss:
+        rules = []
+        for rule in color_rules:
+            rules.append({
+                "value": rule.get('threshold', 0),
+                "color": {"solid": {"color": rule.get('color', color)}},
+            })
+        if rules:
+            config["colorRules"] = rules
+
+    # Axis range propagation
+    if axis_min is not None:
+        config["axisMin"] = axis_min
+    if axis_max is not None:
+        config["axisMax"] = axis_max
+
+    return config
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Sprint 172 — Motion Chart Bookmark Generator
+# ═══════════════════════════════════════════════════════════════════
+
+def _build_motion_chart_bookmarks(page_field, page_values, page_name,
+                                   worksheet_name=''):
+    """Generate a sequence of PBI bookmarks simulating Tableau motion chart.
+
+    Tableau's Pages shelf animates through dimension values (like a play
+    axis).  Power BI has no direct equivalent.  This function creates one
+    bookmark per value so the user can step through frames manually or
+    via an action button.
+
+    Args:
+        page_field: The field name on the Pages shelf (e.g. 'Year').
+        page_values: List of distinct values to create frames for.
+        page_name: The PBI page (report section) these bookmarks target.
+        worksheet_name: Optional Tableau worksheet name for labeling.
+
+    Returns:
+        list[dict]: List of PBI bookmark dicts (one per frame).
+    """
+    import uuid as _uuid
+
+    bookmarks = []
+    label_prefix = worksheet_name or 'Motion'
+    for idx, value in enumerate(page_values):
+        bm = {
+            "name": f"Motion_{_uuid.uuid4().hex[:12]}",
+            "displayName": f"{label_prefix}: {page_field} = {value}",
+            "explorationState": {
+                "version": "1.0",
+                "activeSection": page_name,
+                "filters": [{
+                    "type": "Categorical",
+                    "field": page_field,
+                    "values": [value],
+                }],
+            },
+            "options": {
+                "motionChart": True,
+                "frameIndex": idx,
+                "frameCount": len(page_values),
+            },
+        }
+        bookmarks.append(bm)
+    return bookmarks
+
+
+def _build_motion_chart_action_button(bookmark_names, page_name,
+                                       x=10, y=10, width=120, height=36):
+    """Build an action button visual for stepping through motion bookmarks.
+
+    Args:
+        bookmark_names: Ordered list of bookmark name IDs to cycle through.
+        page_name: PBI page/section name.
+        x: X position.
+        y: Y position.
+        width: Button width.
+        height: Button height.
+
+    Returns:
+        dict: PBIR visual container dict for the action button.
+    """
+    import uuid as _uuid
+
+    visual_id = _uuid.uuid4().hex[:20]
+    return {
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.5.0/schema.json",
+        "name": visual_id,
+        "position": {
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "tabOrder": 0,
+        },
+        "visual": {
+            "visualType": "actionButton",
+            "drillFilterOtherVisuals": True,
+            "objects": {
+                "icon": [{"properties": {"shapeType": _L("'play'")}}],
+                "text": [{"properties": {
+                    "show": _L("true"),
+                    "text": _L("'Play Animation'"),
+                }}],
+                "outline": [{"properties": {
+                    "show": _L("false"),
+                }}],
+                "action": [{"properties": {
+                    "type": _L("'Bookmark'"),
+                    "bookmark": _L(f"'{bookmark_names[0]}'") if bookmark_names else _L("''"),
+                }}],
+            },
+        },
+        "_motionBookmarks": bookmark_names,
+        "_motionPageName": page_name,
+    }
+
+
+def has_motion_chart(worksheet_data):
+    """Detect whether a worksheet uses motion chart (Pages shelf with values).
+
+    Args:
+        worksheet_data: Extracted worksheet dict.
+
+    Returns:
+        bool: True if the worksheet has a populated Pages shelf.
+    """
+    if not worksheet_data:
+        return False
+    ps = worksheet_data.get('pages_shelf')
+    if not ps or not isinstance(ps, dict):
+        return False
+    return bool(ps.get('field'))
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Sprint 173 — Nested Container Solver
+# ═══════════════════════════════════════════════════════════════════
+
+# Default padding (px) applied when Tableau container has no explicit padding
+DEFAULT_CONTAINER_PADDING = 4
+# Minimum visual dimension (prevents zero-size rectangles)
+MIN_VISUAL_DIM = 20
+
+
+def solve_nested_layout(zone_hierarchy, page_width=1280, page_height=720,
+                         max_depth=10):
+    """Recursive layout constraint solver for deeply nested containers.
+
+    Handles 4+ level nesting with overflow detection, z-order
+    preservation, and padding/margin inheritance.
+
+    Args:
+        zone_hierarchy: Root zone dict with 'children', 'orientation',
+            'position', 'padding', 'is_floating', etc.
+        page_width: Target page width in pixels.
+        page_height: Target page height in pixels.
+        max_depth: Safety limit to prevent infinite recursion.
+
+    Returns:
+        dict: Flat map of zone_key → LayoutRect (x, y, w, h, z, depth).
+    """
+    layout = {}
+    if not zone_hierarchy:
+        return layout
+    _solve_zone(zone_hierarchy, 0, 0, page_width, page_height,
+                layout, depth=0, z_counter=[0], max_depth=max_depth,
+                parent_padding=0)
+    # Post-pass: overflow detection and auto-resize
+    _fix_overflow(layout, page_width, page_height)
+    return layout
+
+
+def _solve_zone(zone, px_x, px_y, px_w, px_h, layout, depth, z_counter,
+                max_depth, parent_padding):
+    """Recursively solve layout constraints for a zone and its children."""
+    if depth > max_depth:
+        return
+
+    key = zone.get('name') or zone.get('id', '')
+    children = zone.get('children', [])
+
+    # Padding inheritance: use zone's own padding, fall back to parent's
+    padding = zone.get('padding', parent_padding)
+    if padding is None:
+        padding = DEFAULT_CONTAINER_PADDING
+    margin = zone.get('margin', 0) or 0
+
+    # Apply padding to available area
+    inner_x = px_x + padding
+    inner_y = px_y + padding
+    inner_w = max(px_w - 2 * padding, MIN_VISUAL_DIM)
+    inner_h = max(px_h - 2 * padding, MIN_VISUAL_DIM)
+
+    if not children:
+        # Leaf zone — record with z-order
+        zone_type = zone.get('zone_type', '')
+        if key and zone_type not in ('filter', 'paramctrl', 'color',
+                                      'title', 'size'):
+            z_counter[0] += 1
+            layout[key] = {
+                'x': round(inner_x), 'y': round(inner_y),
+                'w': max(round(inner_w), MIN_VISUAL_DIM),
+                'h': max(round(inner_h), MIN_VISUAL_DIM),
+                'z': z_counter[0],
+                'depth': depth,
+            }
+        return
+
+    orientation = zone.get('orientation', '')
+
+    # Separate floating from tiled children
+    tiled = [c for c in children if not c.get('is_floating', False)]
+    floating = [c for c in children if c.get('is_floating', False)]
+
+    if tiled:
+        _layout_tiled_children(tiled, orientation, inner_x, inner_y,
+                                inner_w, inner_h, margin, layout,
+                                depth + 1, z_counter, max_depth, padding)
+
+    # Floating children: absolute positioning within parent bounds
+    for child in floating:
+        cpos = child.get('position', {})
+        coord_w = max(px_w, 1)
+        coord_h = max(px_h, 1)
+        sx = inner_w / coord_w
+        sy = inner_h / coord_h
+        fx = inner_x + cpos.get('x', 0) * sx
+        fy = inner_y + cpos.get('y', 0) * sy
+        fw = max(cpos.get('w', 300) * sx, MIN_VISUAL_DIM)
+        fh = max(cpos.get('h', 200) * sy, MIN_VISUAL_DIM)
+        _solve_zone(child, fx, fy, fw, fh, layout, depth + 1,
+                    z_counter, max_depth, padding)
+
+    # Record container itself (lower priority than children)
+    if key and key not in layout:
+        z_counter[0] += 1
+        layout[key] = {
+            'x': round(px_x), 'y': round(px_y),
+            'w': max(round(px_w), MIN_VISUAL_DIM),
+            'h': max(round(px_h), MIN_VISUAL_DIM),
+            'z': z_counter[0],
+            'depth': depth,
+        }
+
+
+def _layout_tiled_children(children, orientation, px_x, px_y, px_w, px_h,
+                            margin, layout, depth, z_counter, max_depth,
+                            parent_padding):
+    """Layout tiled children along orientation axis with margin gaps."""
+    total_margin = max(0, (len(children) - 1)) * margin
+
+    if orientation == 'horz':
+        total = sum(c.get('position', {}).get('w', 1) for c in children) or 1
+        avail_w = max(px_w - total_margin, MIN_VISUAL_DIM)
+        cursor = px_x
+        for idx, child in enumerate(children):
+            cw = child.get('position', {}).get('w', 1)
+            alloc_w = avail_w * cw / total
+            _solve_zone(child, cursor, px_y, alloc_w, px_h, layout,
+                        depth, z_counter, max_depth, parent_padding)
+            cursor += alloc_w + margin
+    elif orientation == 'vert':
+        total = sum(c.get('position', {}).get('h', 1) for c in children) or 1
+        avail_h = max(px_h - total_margin, MIN_VISUAL_DIM)
+        cursor = px_y
+        for idx, child in enumerate(children):
+            ch = child.get('position', {}).get('h', 1)
+            alloc_h = avail_h * ch / total
+            _solve_zone(child, px_x, cursor, px_w, alloc_h, layout,
+                        depth, z_counter, max_depth, parent_padding)
+            cursor += alloc_h + margin
+    else:
+        # Proportional 2D layout
+        child_max_x = max((c.get('position', {}).get('x', 0)
+                           + c.get('position', {}).get('w', 1)
+                           for c in children), default=1) or 1
+        child_max_y = max((c.get('position', {}).get('y', 0)
+                           + c.get('position', {}).get('h', 1)
+                           for c in children), default=1) or 1
+        for child in children:
+            cpos = child.get('position', {})
+            cx = px_x + (cpos.get('x', 0) / child_max_x) * px_w
+            cy = px_y + (cpos.get('y', 0) / child_max_y) * px_h
+            cw = max((cpos.get('w', 1) / child_max_x) * px_w, MIN_VISUAL_DIM)
+            ch = max((cpos.get('h', 1) / child_max_y) * px_h, MIN_VISUAL_DIM)
+            _solve_zone(child, cx, cy, cw, ch, layout,
+                        depth, z_counter, max_depth, parent_padding)
+
+
+def _fix_overflow(layout, page_width, page_height):
+    """Detect and fix visual overflow beyond page boundaries.
+
+    Visuals that extend past page edges are resized to fit within
+    the page, preserving position. Minimum dimensions are enforced.
+    """
+    for key, rect in layout.items():
+        # Right edge overflow
+        if rect['x'] + rect['w'] > page_width:
+            rect['w'] = max(page_width - rect['x'], MIN_VISUAL_DIM)
+        # Bottom edge overflow
+        if rect['y'] + rect['h'] > page_height:
+            rect['h'] = max(page_height - rect['y'], MIN_VISUAL_DIM)
+        # Left/top edge overflow (shouldn't happen, but safety)
+        if rect['x'] < 0:
+            rect['w'] = max(rect['w'] + rect['x'], MIN_VISUAL_DIM)
+            rect['x'] = 0
+        if rect['y'] < 0:
+            rect['h'] = max(rect['h'] + rect['y'], MIN_VISUAL_DIM)
+            rect['y'] = 0
+
+
+def get_nesting_depth(zone_hierarchy):
+    """Calculate the maximum nesting depth of a zone hierarchy.
+
+    Args:
+        zone_hierarchy: Root zone dict.
+
+    Returns:
+        int: Maximum depth (0 = single leaf, 1 = one level of children, etc.)
+    """
+    if not zone_hierarchy:
+        return 0
+    children = zone_hierarchy.get('children', [])
+    if not children:
+        return 0
+    return 1 + max(get_nesting_depth(c) for c in children)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Sprint 174 — Rich Tooltip Preservation
+# ═══════════════════════════════════════════════════════════════════
+
+# Default PBI tooltip page dimensions
+TOOLTIP_PAGE_WIDTH = 480
+TOOLTIP_PAGE_HEIGHT = 320
+# Auto-size limits
+TOOLTIP_MIN_HEIGHT = 200
+TOOLTIP_MAX_HEIGHT = 600
+
+
+def build_rich_tooltip_config(tooltips, table_name=''):
+    """Build PBI tooltip objects from Tableau rich tooltip data.
+
+    Processes tooltip runs to extract field references and generate
+    PBI tooltip field bindings (tooltips data role).
+
+    Args:
+        tooltips: List of tooltip dicts from extraction (type='text' with runs).
+        table_name: Default table name for unqualified field refs.
+
+    Returns:
+        dict with 'fields' (list of field refs) and 'has_custom_text' (bool).
+    """
+    if not tooltips:
+        return {'fields': [], 'has_custom_text': False}
+
+    fields = []
+    has_custom_text = False
+    seen = set()
+
+    for tip in tooltips:
+        if not isinstance(tip, dict):
+            continue
+        if tip.get('type') != 'text':
+            continue
+        runs = tip.get('runs', [])
+        if not runs:
+            continue
+        has_custom_text = True
+        for run in runs:
+            field = run.get('field_ref', '')
+            if field and field not in seen:
+                seen.add(field)
+                fields.append({
+                    'field': field,
+                    'table': table_name,
+                    'bold': run.get('bold', False),
+                    'color': run.get('color', ''),
+                    'font_size': run.get('font_size', ''),
+                })
+
+    return {'fields': fields, 'has_custom_text': has_custom_text}
+
+
+def build_tooltip_data_roles(tooltip_config):
+    """Build PBI data role entries for tooltip fields.
+
+    Args:
+        tooltip_config: Output from build_rich_tooltip_config().
+
+    Returns:
+        list of data role binding dicts for tooltips role.
+    """
+    roles = []
+    for f in tooltip_config.get('fields', []):
+        field_name = f.get('field', '')
+        table = f.get('table', '')
+        if not field_name:
+            continue
+        role = {
+            'role': 'Tooltips',
+            'column': field_name,
+        }
+        if table:
+            role['table'] = table
+        roles.append(role)
+    return roles
+
+
+def build_tooltip_formatting(tooltips):
+    """Extract formatting metadata from tooltip runs.
+
+    Returns a list of run formatting dicts for tooltip display config.
+
+    Args:
+        tooltips: List of tooltip dicts from extraction.
+
+    Returns:
+        list of dicts with text, bold, color, font_size, is_field.
+    """
+    formatting = []
+    for tip in tooltips or []:
+        if not isinstance(tip, dict) or tip.get('type') != 'text':
+            continue
+        for run in tip.get('runs', []):
+            fmt = {
+                'text': run.get('text', ''),
+                'bold': run.get('bold', False),
+                'color': run.get('color', ''),
+                'font_size': run.get('font_size', ''),
+                'is_field': bool(run.get('field_ref')),
+            }
+            formatting.append(fmt)
+    return formatting
+
+
+def estimate_tooltip_size(tooltips, base_width=TOOLTIP_PAGE_WIDTH):
+    """Estimate tooltip page dimensions based on content.
+
+    Calculates height based on number of text runs, field refs,
+    and presence of viz-in-tooltip references.
+
+    Args:
+        tooltips: List of tooltip dicts from extraction.
+        base_width: Base width (usually TOOLTIP_PAGE_WIDTH).
+
+    Returns:
+        tuple: (width, height) in pixels.
+    """
+    if not tooltips:
+        return base_width, TOOLTIP_PAGE_HEIGHT
+
+    line_count = 0
+    has_viz = False
+
+    for tip in tooltips:
+        if not isinstance(tip, dict):
+            continue
+        if tip.get('type') == 'viz_in_tooltip':
+            has_viz = True
+        elif tip.get('type') == 'text':
+            runs = tip.get('runs', [])
+            # Count newlines and field refs as separate lines
+            for run in runs:
+                text = run.get('text', '')
+                line_count += max(1, text.count('\n') + 1)
+
+    # Base height: 40px per line, minimum TOOLTIP_MIN_HEIGHT
+    height = max(TOOLTIP_MIN_HEIGHT, line_count * 40)
+    if has_viz:
+        height = max(height, TOOLTIP_PAGE_HEIGHT)  # Viz needs more space
+    height = min(height, TOOLTIP_MAX_HEIGHT)
+
+    return base_width, height
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -1,5 +1,47 @@
 # Changelog
 
+## v35.0.0 — Sprints 171–174 — Stream G: Advanced Visual Fidelity
+
+### Sprint 171 — Sparkline Variants
+- **visual_generator.py**: Area, bar/column, and win/loss sparkline subtypes
+  - 9 new `VISUAL_TYPE_MAP` entries for sparkline variants
+  - `detect_sparkline_subtype()` — normalizes mark class to sparkline type
+  - `_build_sparkline_config()` expanded: area (fillColor, fillOpacity), win/loss (negativeColor, winLossMode), conditional color rules, axis range propagation
+  - Constants: `SPARKLINE_LINE`, `SPARKLINE_COLUMN`, `SPARKLINE_AREA`, `SPARKLINE_WINLOSS`
+
+### Sprint 172 — Motion Chart Workaround
+- **visual_generator.py**: Motion chart bookmark sequence and action button
+  - `_build_motion_chart_bookmarks()` — per-frame bookmarks with categorical filters
+  - `_build_motion_chart_action_button()` — play button with bookmark cycling
+  - `has_motion_chart()` — detect pages shelf with field
+- **pbip_generator.py**: Motion chart bookmark integration into report generation
+  - `_create_motion_chart_bookmarks()` — generates placeholder frames when no values
+  - Bookmarks wired into both report generation paths
+- **assessment.py**: Pages Shelf check updated to "Motion Chart" with bookmark/action button recommendation
+
+### Sprint 173 — Nested Container Solver
+- **visual_generator.py**: Recursive layout constraint solver for deeply nested containers
+  - `solve_nested_layout()` — handles 4+ level nesting with overflow detection
+  - `_solve_zone()` — recursive solver with padding inheritance and z-order tracking
+  - `_layout_tiled_children()` — horizontal/vertical/proportional child layout with margin gaps
+  - `_fix_overflow()` — auto-resize visuals exceeding page boundaries
+  - `get_nesting_depth()` — calculate max nesting depth of zone hierarchy
+  - Constants: `DEFAULT_CONTAINER_PADDING`, `MIN_VISUAL_DIM`
+
+### Sprint 174 — Rich Tooltip Preservation
+- **visual_generator.py**: Rich tooltip field extraction and formatting
+  - `build_rich_tooltip_config()` — extract field refs from tooltip runs with formatting
+  - `build_tooltip_data_roles()` — generate PBI Tooltips data role bindings
+  - `build_tooltip_formatting()` — preserve bold, color, font_size per run
+  - `estimate_tooltip_size()` — auto-size tooltip pages based on content
+  - Constants: `TOOLTIP_PAGE_WIDTH`, `TOOLTIP_PAGE_HEIGHT`, `TOOLTIP_MIN_HEIGHT`, `TOOLTIP_MAX_HEIGHT`
+
+### Tests
+- 134 new tests across 4 test files (46 + 29 + 32 + 27)
+- Total: **8,222 tests** (8,222 passed, 66 skipped, 1 xfailed)
+
+---
+
 ## v34.0.0 — Sprints 151–170 — Zero Error Roadmap (Full Implementation)
 
 **Major release** covering the complete Zero Error Roadmap (20 sprints). Highlights:

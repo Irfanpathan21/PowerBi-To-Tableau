@@ -808,12 +808,13 @@ def _check_interactivity(extracted: Dict) -> CategoryResult:
     ]
     if pages_worksheets:
         cat.checks.append(CheckItem(
-            cat.name, "Pages Shelf / Animation", WARN,
+            cat.name, "Pages Shelf / Motion Chart", WARN,
             f"{len(pages_worksheets)} worksheet(s) use Pages shelf (animation): "
             f"{', '.join(pages_worksheets[:5])}.",
             "Tableau Pages shelf animates through dimension values. "
-            "Converted to a slicer. Power BI Play Axis (preview) may "
-            "offer similar animation — enable it manually if needed.",
+            "Migrated as a bookmark sequence with slicer and action button. "
+            "Power BI Play Axis (preview) may offer similar animation — "
+            "enable it manually if needed.",
         ))
 
     # Dynamic zone visibility (sheet-swap)
