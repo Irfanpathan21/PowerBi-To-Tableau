@@ -96,6 +96,9 @@ class TableauServerClient:
         hdrs = dict(headers or {})
         if self._auth_token:
             hdrs['X-Tableau-Auth'] = self._auth_token
+        # Accept JSON to avoid HTML responses from some servers
+        if 'Accept' not in hdrs:
+            hdrs['Accept'] = 'application/json'
 
         try:
             import requests as req_lib
@@ -126,6 +129,7 @@ class TableauServerClient:
         # urllib fallback
         import urllib.request
         import urllib.error
+        import ssl
 
         body = None
         if json_body is not None:
@@ -134,9 +138,15 @@ class TableauServerClient:
         elif data is not None:
             body = data
 
+        # Use default SSL context (picks up system/corporate certificates)
+        ssl_context = ssl.create_default_context()
+        if os.environ.get('TABLEAU_SSL_NO_VERIFY'):
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+
         req = urllib.request.Request(url, data=body, headers=hdrs, method=method)
         try:
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, context=ssl_context) as resp:
                 if stream_to:
                     with open(stream_to, 'wb') as f:
                         while True:
@@ -147,12 +157,21 @@ class TableauServerClient:
                     return None
                 raw = resp.read()
                 if raw:
-                    return json.loads(raw.decode('utf-8'))
+                    text = raw.decode('utf-8', errors='replace')
+                    try:
+                        return json.loads(text)
+                    except json.JSONDecodeError as je:
+                        # Server returned non-JSON (HTML login page, error page, etc.)
+                        snippet = text[:500]
+                        raise RuntimeError(
+                            f'Tableau Server returned non-JSON response '
+                            f'(HTTP {resp.status}). First 500 chars:\n{snippet}'
+                        ) from je
                 return {}
         except urllib.error.HTTPError as e:
             body_text = e.read().decode('utf-8', errors='replace')
             raise RuntimeError(
-                f'Tableau API error {e.code}: {body_text}'
+                f'Tableau API error {e.code}: {body_text[:1000]}'
             ) from e
 
     # ── Pagination helper ─────────────────────────────────────

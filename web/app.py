@@ -98,17 +98,43 @@ def _run_migration_pipeline(file_path, options, progress_callback=None):
 
         # Step 2: Generation
         from powerbi_import.import_to_powerbi import PowerBIImporter
-        importer = PowerBIImporter(
-            json_dir=os.path.join(root, 'tableau_export'),
+        extract_dir = os.path.join(root, 'tableau_export')
+        importer = PowerBIImporter(source_dir=extract_dir)
+        report_name = os.path.splitext(os.path.basename(file_path))[0]
+        importer.import_all(
+            report_name=report_name,
             output_dir=result['output_dir'],
-        )
-        gen_result = importer.import_all(
-            report_name=os.path.splitext(os.path.basename(file_path))[0],
             culture=options.get('culture', 'en-US'),
-            model_mode=options.get('mode', 'import'),
             output_format=options.get('output_format', 'pbip'),
         )
-        result['stats'] = gen_result if isinstance(gen_result, dict) else {}
+
+        # Find the generated project folder for stats
+        project_dir = os.path.join(result['output_dir'], report_name)
+        stats = {}
+        sm_dir = os.path.join(project_dir, f'{report_name}.SemanticModel')
+        report_dir = os.path.join(project_dir, f'{report_name}.Report')
+        if os.path.isdir(sm_dir):
+            # Count tables from definition/tables/
+            tables_dir = os.path.join(sm_dir, 'definition', 'tables')
+            if os.path.isdir(tables_dir):
+                stats['tables'] = len([d for d in os.listdir(tables_dir)
+                                       if os.path.isdir(os.path.join(tables_dir, d))])
+        if os.path.isdir(report_dir):
+            # Count pages
+            pages_dir = os.path.join(report_dir, 'definition', 'pages')
+            if os.path.isdir(pages_dir):
+                page_dirs = [d for d in os.listdir(pages_dir)
+                             if os.path.isdir(os.path.join(pages_dir, d))]
+                stats['pages'] = len(page_dirs)
+                # Count visuals across all pages
+                visuals = 0
+                for pd_name in page_dirs:
+                    vis_dir = os.path.join(pages_dir, pd_name, 'visuals')
+                    if os.path.isdir(vis_dir):
+                        visuals += len([v for v in os.listdir(vis_dir)
+                                        if os.path.isdir(os.path.join(vis_dir, v))])
+                stats['visuals'] = visuals
+        result['stats'] = stats
         result['success'] = True
 
         if progress_callback:
@@ -117,8 +143,7 @@ def _run_migration_pipeline(file_path, options, progress_callback=None):
         # Step 3: Validation (optional)
         try:
             from powerbi_import.validator import ArtifactValidator
-            validator = ArtifactValidator()
-            val_result = validator.validate_project(result['output_dir'])
+            val_result = ArtifactValidator.validate_project(project_dir)
             result['validation'] = val_result
         except Exception as e:
             result['validation'] = {'error': str(e)}
@@ -146,9 +171,24 @@ def _run_assessment(file_path):
         if not extractor.extract_all():
             return {'error': 'Extraction failed'}
 
-        from powerbi_import.assessment import AssessmentEngine
-        engine = AssessmentEngine()
-        return engine.assess(os.path.join(root, 'tableau_export'))
+        from powerbi_import.assessment import run_assessment
+
+        # Load extracted JSON files
+        extracted = {}
+        json_files = ['datasources', 'worksheets', 'dashboards', 'calculations',
+                      'parameters', 'filters', 'stories', 'actions', 'sets',
+                      'groups', 'bins', 'hierarchies', 'custom_sql', 'user_filters',
+                      'sort_orders', 'aliases']
+        extract_dir = os.path.join(root, 'tableau_export')
+        for jf in json_files:
+            fpath = os.path.join(extract_dir, f'{jf}.json')
+            if os.path.exists(fpath):
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    extracted[jf] = json.load(f)
+
+        workbook_name = os.path.splitext(os.path.basename(file_path))[0]
+        report = run_assessment(extracted, workbook_name=workbook_name)
+        return report.to_dict()
     except Exception as e:
         return {'error': str(e)}
 
@@ -273,15 +313,31 @@ def run_streamlit_app():
             if 'error' in assessment:
                 st.error(f"Assessment error: {assessment['error']}")
             else:
-                overall = assessment.get('overall_score', 0)
-                verdict = assessment.get('verdict', 'unknown')
-                color = {'pass': 'green', 'warn': 'orange', 'fail': 'red'}.get(verdict, 'gray')
-                st.markdown(f"### Overall Score: :{color}[{overall}%] ({verdict.upper()})")
+                overall = assessment.get('overall_score', 'UNKNOWN')
+                color_map = {'GREEN': 'green', 'YELLOW': 'orange', 'RED': 'red'}
+                color = color_map.get(overall, 'gray')
+                totals = assessment.get('totals', {})
+                total_checks = totals.get('checks', 0)
+                pass_count = totals.get('pass', 0)
+                pct = round(pass_count / total_checks * 100) if total_checks else 0
+                st.markdown(f"### Overall Score: :{color}[{pct}%] ({overall})")
 
-                categories = assessment.get('categories', {})
-                for cat, info in categories.items():
-                    score = info.get('score', 0) if isinstance(info, dict) else 0
-                    st.progress(score / 100, text=f"{cat}: {score}%")
+                cols_t = st.columns(3)
+                cols_t[0].metric("Pass", totals.get('pass', 0))
+                cols_t[1].metric("Warn", totals.get('warn', 0))
+                cols_t[2].metric("Fail", totals.get('fail', 0))
+
+                categories = assessment.get('categories', [])
+                for cat in categories:
+                    if isinstance(cat, dict):
+                        name = cat.get('name', '')
+                        checks = cat.get('checks', [])
+                        pass_c = sum(1 for c in checks if c.get('severity') == 'pass')
+                        total_c = len(checks)
+                        score = round(pass_c / total_c * 100) if total_c else 100
+                        severity = cat.get('worst_severity', 'pass')
+                        icon = {'pass': '✅', 'warn': '⚠️', 'fail': '❌'}.get(severity, '•')
+                        st.progress(score / 100, text=f"{icon} {name}: {score}% ({pass_c}/{total_c})")
 
         c1, c2 = st.columns(2)
         with c1:
@@ -341,13 +397,18 @@ def run_streamlit_app():
         if 'error' in validation:
             st.warning(f"Validation: {validation['error']}")
         else:
-            is_valid = validation.get('valid', False)
+            is_valid = validation.get('valid', validation.get('passed', False))
+            errors = validation.get('errors', [])
+            warnings = validation.get('warnings', [])
             if is_valid:
                 st.success("All validation checks passed!")
             else:
                 st.warning("Some validation issues found:")
-                for issue in validation.get('issues', []):
-                    st.warning(f"  - {issue}")
+                for err in errors:
+                    st.error(f"  - {err}")
+            if warnings:
+                for w in warnings:
+                    st.warning(f"  - {w}")
 
         if st.button("Download →", type="primary"):
             st.session_state.step = 6
