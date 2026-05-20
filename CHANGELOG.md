@@ -1,5 +1,33 @@
 # Changelog
 
+## v38.1.0 — Sprint 177 — Workspace Creation & Gateway Binding
+
+### PBI Service Client — Workspace & Gateway APIs
+- **powerbi_import/deploy/pbi_client.py**: 7 new REST API methods
+  - `create_workspace(name)` — POST /groups to create a new Power BI workspace
+  - `list_gateways()` — GET /gateways to discover on-premises data gateways
+  - `get_gateway(gateway_id)` — GET /gateways/{id} for gateway details
+  - `get_dataset_datasources(workspace_id, dataset_id)` — list datasources on a deployed dataset
+  - `get_gateway_datasources(gateway_id)` — list datasources registered on a gateway
+  - `bind_dataset_to_gateway(workspace_id, dataset_id, gateway_id, datasource_ids)` — POST Default.BindToGateway
+  - `take_over_dataset(workspace_id, dataset_id)` — POST Default.TakeOver for ownership transfer
+  - `update_dataset_datasources(workspace_id, dataset_id, update_details)` — POST Default.UpdateDatasources for connection string changes
+
+### PBI Workspace Deployer — Orchestration
+- **powerbi_import/deploy/pbi_deployer.py**: 4 new orchestration methods
+  - `create_workspace(name)` — create workspace and update deployer target
+  - `ensure_workspace(name)` — find existing workspace by name (case-insensitive) or create new
+  - `bind_to_gateway(dataset_id, gateway_id, ...)` — take ownership → discover datasources → bind to gateway
+  - `deploy_and_bind(project_dir, gateway_id, ...)` — full pipeline: deploy .pbip → bind to gateway → refresh
+
+### CLI — New Deployment Flags
+- **migrate.py**: 2 new deployment flags
+  - `--create-workspace NAME` — create (or find) a PBI workspace before deploying
+  - `--gateway-bind GATEWAY_ID` — bind deployed semantic model to an on-premises data gateway
+
+### Tests
+- **tests/test_pbi_service.py**: 24 new tests covering workspace creation, gateway listing, bind-to-gateway, take-over, deploy-and-bind pipeline, ensure-workspace deduplication
+
 ## v38.0.0 — Sprints 175–176 — Report Packaging & REST API v2
 
 ### Sprint 175 — PDF/PPTX Report Export

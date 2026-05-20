@@ -303,3 +303,137 @@ class PBIServiceClient:
         """
         url = f'{PBI_API_BASE}/groups/{workspace_id}/datasets/{dataset_id}'
         return self._request('DELETE', url)
+
+    # ── Workspace management ──────────────────────────────────────
+
+    def create_workspace(self, name):
+        """Create a new Power BI workspace.
+
+        Args:
+            name: Display name for the workspace.
+
+        Returns:
+            dict: Created workspace with 'id' and 'name'.
+        """
+        url = f'{PBI_API_BASE}/groups?workspaceV2=True'
+        return self._request('POST', url, data={'name': name})
+
+    # ── Gateway operations ────────────────────────────────────────
+
+    def list_gateways(self):
+        """List all on-premises data gateways accessible to the caller.
+
+        Returns:
+            list[dict]: Gateway objects with id, name, type, publicKey.
+        """
+        result = self._request('GET', f'{PBI_API_BASE}/gateways')
+        return result.get('value', [])
+
+    def get_gateway(self, gateway_id):
+        """Get details of a specific gateway.
+
+        Args:
+            gateway_id: Gateway ID.
+
+        Returns:
+            dict: Gateway details.
+        """
+        return self._request(
+            'GET', f'{PBI_API_BASE}/gateways/{gateway_id}'
+        )
+
+    def get_dataset_datasources(self, workspace_id, dataset_id):
+        """List datasources for a dataset (required to bind to gateway).
+
+        Args:
+            workspace_id: Workspace ID.
+            dataset_id: Dataset ID.
+
+        Returns:
+            list[dict]: Datasource objects with datasourceId, gatewayId,
+                connectionDetails (server, database).
+        """
+        url = (f'{PBI_API_BASE}/groups/{workspace_id}/datasets/{dataset_id}'
+               '/datasources')
+        result = self._request('GET', url)
+        return result.get('value', [])
+
+    def get_gateway_datasources(self, gateway_id):
+        """List datasources registered on a gateway.
+
+        Args:
+            gateway_id: Gateway ID.
+
+        Returns:
+            list[dict]: Gateway datasource objects.
+        """
+        url = f'{PBI_API_BASE}/gateways/{gateway_id}/datasources'
+        result = self._request('GET', url)
+        return result.get('value', [])
+
+    def bind_dataset_to_gateway(self, workspace_id, dataset_id, gateway_id,
+                                datasource_ids=None):
+        """Bind a dataset to a gateway (and optionally specific datasources).
+
+        After publishing a report, the semantic model's data connections
+        need to be linked to a gateway so that scheduled refresh and
+        on-demand refresh can reach on-premises or VNet data sources.
+
+        Args:
+            workspace_id: Workspace ID.
+            dataset_id: Dataset ID.
+            gateway_id: Target gateway ID.
+            datasource_ids: Optional list of gateway datasource IDs to bind.
+                If omitted, PBI auto-matches by connection string.
+
+        Returns:
+            dict: Empty on success (HTTP 200).
+        """
+        url = (f'{PBI_API_BASE}/groups/{workspace_id}/datasets/{dataset_id}'
+               '/Default.BindToGateway')
+        body = {'gatewayObjectId': gateway_id}
+        if datasource_ids:
+            body['datasourceObjectIds'] = datasource_ids
+        return self._request('POST', url, data=body)
+
+    def take_over_dataset(self, workspace_id, dataset_id):
+        """Take over ownership of a dataset.
+
+        Required before binding to a gateway if the current service
+        principal is not the dataset owner.
+
+        Args:
+            workspace_id: Workspace ID.
+            dataset_id: Dataset ID.
+
+        Returns:
+            dict: Empty on success (HTTP 200).
+        """
+        url = (f'{PBI_API_BASE}/groups/{workspace_id}/datasets/{dataset_id}'
+               '/Default.TakeOver')
+        return self._request('POST', url)
+
+    def update_dataset_datasources(self, workspace_id, dataset_id,
+                                   update_details):
+        """Update connection details for dataset datasources.
+
+        Useful for changing server/database after publishing (e.g. from
+        dev to prod connection strings).
+
+        Args:
+            workspace_id: Workspace ID.
+            dataset_id: Dataset ID.
+            update_details: list of dicts with 'connectionDetails'
+                (original) and 'connectionDetails' (updated):
+                [{"datasourceSelector": {"datasourceType": "Sql",
+                  "connectionDetails": {"server": "old", "database": "old"}},
+                  "connectionDetails": {"server": "new", "database": "new"}}]
+
+        Returns:
+            dict: Empty on success (HTTP 200).
+        """
+        url = (f'{PBI_API_BASE}/groups/{workspace_id}/datasets/{dataset_id}'
+               '/Default.UpdateDatasources')
+        return self._request('POST', url, data={
+            'updateDetails': update_details,
+        })

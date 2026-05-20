@@ -546,3 +546,184 @@ class PBIWorkspaceDeployer:
         except Exception as e:
             logger.debug("Could not remove dataset '%s': %s",
                          dataset_name, e)
+
+    # ── Workspace creation ──────────────────────────────────────────
+
+    def create_workspace(self, name):
+        """Create a new Power BI workspace and update deployer target.
+
+        Args:
+            name: Display name for the new workspace.
+
+        Returns:
+            dict: {id, name} of the created workspace.
+        """
+        workspace = self.client.create_workspace(name)
+        ws_id = workspace.get('id', '')
+        ws_name = workspace.get('name', name)
+        logger.info("Created workspace '%s' (id=%s)", ws_name, ws_id)
+        # Update deployer target to the new workspace
+        self.workspace_id = ws_id
+        return workspace
+
+    def ensure_workspace(self, name):
+        """Find an existing workspace by name or create a new one.
+
+        Args:
+            name: Workspace display name.
+
+        Returns:
+            dict: {id, name, created} — 'created' is True if new.
+        """
+        workspaces = self.client.list_workspaces()
+        for ws in workspaces:
+            if ws.get('name', '').lower() == name.lower():
+                ws_id = ws.get('id', '')
+                logger.info("Found existing workspace '%s' (id=%s)",
+                            name, ws_id)
+                self.workspace_id = ws_id
+                return {'id': ws_id, 'name': ws.get('name'), 'created': False}
+
+        ws = self.create_workspace(name)
+        return {'id': ws.get('id', ''), 'name': ws.get('name', name),
+                'created': True}
+
+    # ── Gateway binding ─────────────────────────────────────────────
+
+    def bind_to_gateway(self, dataset_id, gateway_id, datasource_ids=None,
+                        take_over=True):
+        """Bind a deployed dataset to a gateway.
+
+        Optionally takes over dataset ownership first (required for SP).
+
+        Args:
+            dataset_id: Dataset ID (from deploy_project result).
+            gateway_id: Target on-premises data gateway ID.
+            datasource_ids: Optional list of gateway datasource IDs.
+                If omitted, PBI auto-matches by connection string.
+            take_over: Take ownership of the dataset before binding
+                (required when the service principal is not the owner).
+
+        Returns:
+            dict: {status, dataset_id, gateway_id, datasources, error}.
+        """
+        result = {
+            'status': 'pending',
+            'dataset_id': dataset_id,
+            'gateway_id': gateway_id,
+            'datasources': [],
+            'error': None,
+        }
+
+        # Step 1: Take ownership (if needed)
+        if take_over:
+            try:
+                self.client.take_over_dataset(self.workspace_id, dataset_id)
+                logger.info("Took over dataset %s", dataset_id)
+            except Exception as e:
+                # 400 = already the owner — non-fatal
+                if '400' not in str(e):
+                    result['status'] = 'failed'
+                    result['error'] = f'TakeOver failed: {e}'
+                    logger.error(result['error'])
+                    return result
+                logger.debug("TakeOver skipped (already owner): %s", e)
+
+        # Step 2: Discover dataset datasources
+        try:
+            ds_list = self.client.get_dataset_datasources(
+                self.workspace_id, dataset_id
+            )
+            result['datasources'] = [
+                {
+                    'datasourceId': d.get('datasourceId'),
+                    'datasourceType': d.get('datasourceType'),
+                    'server': (d.get('connectionDetails') or {}).get('server'),
+                    'database': (d.get('connectionDetails') or {}).get('database'),
+                    'gatewayId': d.get('gatewayId'),
+                }
+                for d in ds_list
+            ]
+            logger.info("Found %d datasource(s) on dataset %s",
+                        len(ds_list), dataset_id)
+        except Exception as e:
+            logger.warning("Could not list datasources: %s", e)
+
+        # Step 3: Bind to gateway
+        try:
+            self.client.bind_dataset_to_gateway(
+                self.workspace_id, dataset_id, gateway_id,
+                datasource_ids=datasource_ids,
+            )
+            result['status'] = 'succeeded'
+            logger.info("Bound dataset %s to gateway %s",
+                        dataset_id, gateway_id)
+        except Exception as e:
+            result['status'] = 'failed'
+            result['error'] = f'BindToGateway failed: {e}'
+            logger.error(result['error'])
+
+        return result
+
+    def deploy_and_bind(self, project_dir, gateway_id,
+                        dataset_name=None, overwrite=True,
+                        refresh=False, datasource_ids=None):
+        """Full pipeline: deploy .pbip → PBI Service, then bind to gateway.
+
+        Args:
+            project_dir: Path to .pbip project directory.
+            gateway_id: Gateway ID for binding.
+            dataset_name: Override dataset name.
+            overwrite: Overwrite existing dataset/report.
+            refresh: Trigger refresh after gateway binding.
+            datasource_ids: Optional gateway datasource IDs.
+
+        Returns:
+            dict: {deploy, gateway_bind, refresh} results.
+        """
+        pipeline_result = {
+            'deploy': None,
+            'gateway_bind': None,
+            'refresh': None,
+        }
+
+        # Step 1: Deploy
+        deploy_result = self.deploy_project(
+            project_dir, dataset_name=dataset_name,
+            overwrite=overwrite, refresh=False,
+        )
+        pipeline_result['deploy'] = deploy_result.to_dict()
+
+        if deploy_result.status != 'succeeded':
+            return pipeline_result
+
+        # Step 2: Bind to gateway
+        bind_result = self.bind_to_gateway(
+            deploy_result.dataset_id, gateway_id,
+            datasource_ids=datasource_ids,
+        )
+        pipeline_result['gateway_bind'] = bind_result
+
+        if bind_result['status'] != 'succeeded':
+            return pipeline_result
+
+        # Step 3: Trigger refresh (now that gateway is bound)
+        if refresh and deploy_result.dataset_id:
+            try:
+                self.client.refresh_dataset(
+                    self.workspace_id, deploy_result.dataset_id
+                )
+                pipeline_result['refresh'] = {
+                    'status': 'triggered',
+                    'dataset_id': deploy_result.dataset_id,
+                }
+                logger.info("Refresh triggered for dataset %s",
+                            deploy_result.dataset_id)
+            except Exception as e:
+                pipeline_result['refresh'] = {
+                    'status': 'failed',
+                    'error': str(e),
+                }
+                logger.warning("Post-bind refresh failed: %s", e)
+
+        return pipeline_result

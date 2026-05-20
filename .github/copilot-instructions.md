@@ -91,9 +91,9 @@ Automated migration of Tableau workbooks (.twb/.twbx) to Power BI projects (.pbi
     - `utils.py`: `DeploymentReport` (pass/fail tracking), `ArtifactCache` (incremental deployment metadata)
     - `config/settings.py`: Centralized config via env vars (FABRIC_WORKSPACE_ID, FABRIC_TENANT_ID, etc.)
     - `config/environments.py`: Per-environment configs (development/staging/production)
-    - `pbi_client.py`: Power BI Service REST API client — Azure AD auth (SP/MI/token), import .pbix, refresh, list/delete datasets/reports
+    - `pbi_client.py`: Power BI Service REST API client — Azure AD auth (SP/MI/token), import .pbix, refresh, list/delete datasets/reports, `create_workspace()`, `list_gateways()`, `get_gateway()`, `get_dataset_datasources()`, `get_gateway_datasources()`, `bind_dataset_to_gateway()`, `take_over_dataset()`, `update_dataset_datasources()`
     - `pbix_packager.py`: .pbip → .pbix ZIP packager with OPC content types
-    - `pbi_deployer.py`: PBI Service deployment orchestrator — package, upload, poll, refresh, validate, `deploy_refresh_schedule()` for PBI REST API refresh config, `deploy_rolling()` for blue/green deployment with canary validation and auto-rollback
+    - `pbi_deployer.py`: PBI Service deployment orchestrator — package, upload, poll, refresh, validate, `deploy_refresh_schedule()` for PBI REST API refresh config, `deploy_rolling()` for blue/green deployment with canary validation and auto-rollback, `create_workspace()`/`ensure_workspace()` for workspace provisioning, `bind_to_gateway()` for gateway binding, `deploy_and_bind()` for full deploy+gateway pipeline
     - `bundle_deployer.py`: Fabric bundle deployer — deploy shared model + thin reports as atomic bundle, artifact discovery, per-report error isolation, rebind, refresh, `BundleDeploymentResult`
     - `multi_tenant.py`: Multi-tenant deployment — `TenantConfig`/`MultiTenantConfig` (validate/load/save JSON), `_apply_connection_overrides()` (template substitution: `${TENANT_SERVER}`, `${TENANT_DATABASE}`, context-aware escaping, null byte blocking, placeholder validation), `deploy_multi_tenant()` orchestrator with per-tenant results
 - **tests/**: Unit and integration tests (7,099 tests across 141+ test files + conftest.py shared fixtures)
@@ -127,6 +127,9 @@ python migrate.py path/to/workbook.twbx --calendar-start 2018 --calendar-end 202
 python migrate.py path/to/workbook.twbx --culture fr-FR
 python migrate.py path/to/workbook.twbx --assess
 python migrate.py path/to/workbook.twbx --deploy WORKSPACE_ID --deploy-refresh
+python migrate.py path/to/workbook.twbx --deploy WORKSPACE_ID --gateway-bind GATEWAY_ID --deploy-refresh
+python migrate.py path/to/workbook.twbx --create-workspace "Sales Reports" --deploy _ --deploy-refresh
+python migrate.py path/to/workbook.twbx --create-workspace "Sales Reports" --deploy _ --gateway-bind GATEWAY_ID
 python migrate.py --server https://tableau.company.com --workbook "Sales Dashboard" --token-name my-pat --token-secret secret
 python migrate.py --server https://tableau.company.com --server-batch Marketing --output-dir /tmp/batch
 python migrate.py --server https://tableau.company.com --server-batch Marketing --server-assets all --server-preserve-folders --token-name pat --token-secret secret

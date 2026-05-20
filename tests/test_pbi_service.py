@@ -431,5 +431,274 @@ class TestDeployExports(unittest.TestCase):
         self.assertTrue(callable(DeploymentResult))
 
 
+# ── PBIServiceClient — Workspace & Gateway APIs ──────────────
+
+class TestPBIServiceClientWorkspaceGateway(unittest.TestCase):
+    """Tests for create_workspace, gateway, and bind APIs."""
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_create_workspace_url_and_body(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {'id': 'ws-new', 'name': 'MyWS'}
+            result = client.create_workspace('MyWS')
+            mock_req.assert_called_once()
+            args, kwargs = mock_req.call_args
+            self.assertEqual(args[0], 'POST')
+            self.assertIn('/groups', args[1])
+            self.assertIn('workspaceV2=True', args[1])
+            self.assertEqual(result['id'], 'ws-new')
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_list_gateways_url(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {'value': [{'id': 'gw-1'}]}
+            result = client.list_gateways()
+            args, _ = mock_req.call_args
+            self.assertIn('/gateways', args[1])
+            self.assertEqual(len(result), 1)
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_get_gateway_url(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {'id': 'gw-1', 'name': 'OnPremGW'}
+            result = client.get_gateway('gw-1')
+            args, _ = mock_req.call_args
+            self.assertIn('/gateways/gw-1', args[1])
+            self.assertEqual(result['name'], 'OnPremGW')
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_get_dataset_datasources_url(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {'value': [{'datasourceId': 'src-1'}]}
+            result = client.get_dataset_datasources('ws-1', 'ds-1')
+            args, _ = mock_req.call_args
+            self.assertIn('/groups/ws-1/datasets/ds-1/datasources', args[1])
+            self.assertEqual(len(result), 1)
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_get_gateway_datasources_url(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {'value': [{'id': 'gw-ds-1'}]}
+            result = client.get_gateway_datasources('gw-1')
+            args, _ = mock_req.call_args
+            self.assertIn('/gateways/gw-1/datasources', args[1])
+            self.assertEqual(len(result), 1)
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_bind_dataset_to_gateway_url_and_body(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {}
+            client.bind_dataset_to_gateway('ws-1', 'ds-1', 'gw-1')
+            args, kwargs = mock_req.call_args
+            self.assertEqual(args[0], 'POST')
+            self.assertIn('/Default.BindToGateway', args[1])
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_bind_dataset_with_datasource_ids(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {}
+            client.bind_dataset_to_gateway(
+                'ws-1', 'ds-1', 'gw-1',
+                datasource_ids=['gw-ds-1', 'gw-ds-2'],
+            )
+            args, kwargs = mock_req.call_args
+            body = kwargs.get('data', args[2] if len(args) > 2 else {})
+            self.assertEqual(body['gatewayObjectId'], 'gw-1')
+            self.assertEqual(body['datasourceObjectIds'], ['gw-ds-1', 'gw-ds-2'])
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_take_over_dataset_url(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {}
+            client.take_over_dataset('ws-1', 'ds-1')
+            args, _ = mock_req.call_args
+            self.assertEqual(args[0], 'POST')
+            self.assertIn('/Default.TakeOver', args[1])
+
+    @patch.dict(os.environ, {'PBI_ACCESS_TOKEN': 'tok-test'})
+    def test_update_dataset_datasources_url(self):
+        client = PBIServiceClient()
+        with patch.object(client, '_request') as mock_req:
+            mock_req.return_value = {}
+            client.update_dataset_datasources('ws-1', 'ds-1', [
+                {'connectionDetails': {'server': 'old'}, 'datasourceSelector': {}},
+            ])
+            args, _ = mock_req.call_args
+            self.assertEqual(args[0], 'POST')
+            self.assertIn('/Default.UpdateDatasources', args[1])
+
+
+# ── PBIWorkspaceDeployer — Workspace & Gateway orchestration ──
+
+class TestDeployerWorkspaceGateway(unittest.TestCase):
+    """Tests for create_workspace, ensure_workspace, bind_to_gateway, deploy_and_bind."""
+
+    def _make_mock_client(self):
+        client = MagicMock(spec=PBIServiceClient)
+        client.import_pbix.return_value = {'id': 'imp-001'}
+        client.get_import_status.return_value = {
+            'importState': 'Succeeded',
+            'datasets': [{'id': 'ds-001'}],
+            'reports': [{'id': 'rpt-001'}],
+        }
+        client.list_datasets.return_value = [{'id': 'ds-001'}]
+        client.refresh_dataset.return_value = {}
+        client.get_refresh_history.return_value = []
+        client.create_workspace.return_value = {'id': 'ws-new', 'name': 'NewWS'}
+        client.list_workspaces.return_value = []
+        client.take_over_dataset.return_value = {}
+        client.get_dataset_datasources.return_value = [
+            {'datasourceId': 'src-1', 'datasourceType': 'Sql',
+             'connectionDetails': {'server': 'sql.example.com', 'database': 'SalesDB'},
+             'gatewayId': None},
+        ]
+        client.bind_dataset_to_gateway.return_value = {}
+        return client
+
+    @staticmethod
+    def _make_deploy_project(td, name):
+        proj = os.path.join(td, name)
+        os.makedirs(proj)
+        with open(os.path.join(proj, f'{name}.pbip'), 'w') as f:
+            json.dump({}, f)
+        rd = os.path.join(proj, f'{name}.Report')
+        os.makedirs(rd)
+        with open(os.path.join(rd, 'report.json'), 'w') as f:
+            json.dump({}, f)
+        sd = os.path.join(proj, f'{name}.SemanticModel')
+        os.makedirs(sd)
+        with open(os.path.join(sd, 'model.tmdl'), 'w') as f:
+            f.write('model\n')
+        return proj
+
+    def test_create_workspace(self):
+        client = self._make_mock_client()
+        deployer = PBIWorkspaceDeployer(workspace_id='', client=client)
+        ws = deployer.create_workspace('Sales Dashboard')
+        self.assertEqual(ws['id'], 'ws-new')
+        self.assertEqual(deployer.workspace_id, 'ws-new')
+        client.create_workspace.assert_called_once_with('Sales Dashboard')
+
+    def test_ensure_workspace_creates_new(self):
+        client = self._make_mock_client()
+        client.list_workspaces.return_value = []
+        deployer = PBIWorkspaceDeployer(workspace_id='', client=client)
+        ws = deployer.ensure_workspace('NewWS')
+        self.assertTrue(ws['created'])
+        self.assertEqual(ws['id'], 'ws-new')
+
+    def test_ensure_workspace_reuses_existing(self):
+        client = self._make_mock_client()
+        client.list_workspaces.return_value = [
+            {'id': 'ws-existing', 'name': 'Sales'},
+        ]
+        deployer = PBIWorkspaceDeployer(workspace_id='', client=client)
+        ws = deployer.ensure_workspace('Sales')
+        self.assertFalse(ws['created'])
+        self.assertEqual(ws['id'], 'ws-existing')
+        client.create_workspace.assert_not_called()
+
+    def test_ensure_workspace_case_insensitive(self):
+        client = self._make_mock_client()
+        client.list_workspaces.return_value = [
+            {'id': 'ws-x', 'name': 'Finance Reports'},
+        ]
+        deployer = PBIWorkspaceDeployer(workspace_id='', client=client)
+        ws = deployer.ensure_workspace('finance reports')
+        self.assertFalse(ws['created'])
+
+    def test_bind_to_gateway_success(self):
+        client = self._make_mock_client()
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        result = deployer.bind_to_gateway('ds-1', 'gw-1')
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['gateway_id'], 'gw-1')
+        self.assertEqual(len(result['datasources']), 1)
+        client.take_over_dataset.assert_called_once()
+        client.bind_dataset_to_gateway.assert_called_once()
+
+    def test_bind_to_gateway_skip_takeover(self):
+        client = self._make_mock_client()
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        result = deployer.bind_to_gateway('ds-1', 'gw-1', take_over=False)
+        self.assertEqual(result['status'], 'succeeded')
+        client.take_over_dataset.assert_not_called()
+
+    def test_bind_to_gateway_with_datasource_ids(self):
+        client = self._make_mock_client()
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        result = deployer.bind_to_gateway(
+            'ds-1', 'gw-1', datasource_ids=['gw-ds-1'],
+        )
+        self.assertEqual(result['status'], 'succeeded')
+        client.bind_dataset_to_gateway.assert_called_once_with(
+            'ws-1', 'ds-1', 'gw-1', datasource_ids=['gw-ds-1'],
+        )
+
+    def test_bind_to_gateway_bind_failure(self):
+        client = self._make_mock_client()
+        client.bind_dataset_to_gateway.side_effect = Exception('Gateway unreachable')
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        result = deployer.bind_to_gateway('ds-1', 'gw-1')
+        self.assertEqual(result['status'], 'failed')
+        self.assertIn('Gateway unreachable', result['error'])
+
+    def test_bind_to_gateway_takeover_already_owner(self):
+        client = self._make_mock_client()
+        client.take_over_dataset.side_effect = Exception('400 Bad Request')
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        result = deployer.bind_to_gateway('ds-1', 'gw-1')
+        # 400 = already owner, should proceed
+        self.assertEqual(result['status'], 'succeeded')
+
+    def test_bind_to_gateway_takeover_real_failure(self):
+        client = self._make_mock_client()
+        client.take_over_dataset.side_effect = Exception('403 Forbidden')
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        result = deployer.bind_to_gateway('ds-1', 'gw-1')
+        self.assertEqual(result['status'], 'failed')
+        self.assertIn('TakeOver failed', result['error'])
+
+    def test_deploy_and_bind_success(self):
+        client = self._make_mock_client()
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        with tempfile.TemporaryDirectory() as td:
+            proj = self._make_deploy_project(td, 'Sales')
+            result = deployer.deploy_and_bind(proj, gateway_id='gw-1')
+            self.assertEqual(result['deploy']['status'], 'succeeded')
+            self.assertEqual(result['gateway_bind']['status'], 'succeeded')
+
+    def test_deploy_and_bind_with_refresh(self):
+        client = self._make_mock_client()
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        with tempfile.TemporaryDirectory() as td:
+            proj = self._make_deploy_project(td, 'Sales')
+            result = deployer.deploy_and_bind(
+                proj, gateway_id='gw-1', refresh=True,
+            )
+            self.assertIsNotNone(result['refresh'])
+            self.assertEqual(result['refresh']['status'], 'triggered')
+
+    def test_deploy_and_bind_deploy_failure_skips_bind(self):
+        client = self._make_mock_client()
+        client.import_pbix.side_effect = Exception('Upload failed')
+        deployer = PBIWorkspaceDeployer(workspace_id='ws-1', client=client)
+        with tempfile.TemporaryDirectory() as td:
+            proj = self._make_deploy_project(td, 'Bad')
+            result = deployer.deploy_and_bind(proj, gateway_id='gw-1')
+            self.assertNotEqual(
+                (result.get('deploy') or {}).get('status'), 'succeeded'
+            )
+            self.assertIsNone(result['gateway_bind'])
+
+
 if __name__ == '__main__':
     unittest.main()

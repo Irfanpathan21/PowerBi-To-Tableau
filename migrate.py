@@ -2404,6 +2404,29 @@ def _add_deploy_args(parser):
         help='Path to SLA configuration JSON (max_migration_seconds, min_fidelity_score, etc.).'
     )
 
+    parser.add_argument(
+        '--create-workspace',
+        metavar='NAME',
+        default=None,
+        help=(
+            'Create (or find) a Power BI workspace with the given name before '
+            'deploying. If a workspace with the same name exists, reuse it. '
+            'Use with --deploy to auto-create the target workspace.'
+        )
+    )
+
+    parser.add_argument(
+        '--gateway-bind',
+        metavar='GATEWAY_ID',
+        default=None,
+        help=(
+            'Bind the deployed semantic model to an on-premises data gateway. '
+            'After deployment, calls BindToGateway on the dataset so that '
+            'scheduled and on-demand refresh can reach the data source. '
+            'Use with --deploy.'
+        )
+    )
+
 
 def _add_server_args(parser):
     """Add Tableau Server extraction arguments."""
@@ -5886,11 +5909,29 @@ def _run_deploy_to_pbi_service(args, source_basename):
     try:
         from powerbi_import.deploy.pbi_deployer import PBIWorkspaceDeployer
         print_header("DEPLOYING TO POWER BI SERVICE")
-        deployer = PBIWorkspaceDeployer(workspace_id=args.deploy)
+
+        workspace_id = args.deploy
+        workspace_name = getattr(args, 'create_workspace', None)
+
+        # Create / find workspace if --create-workspace is provided
+        if workspace_name:
+            deployer = PBIWorkspaceDeployer(workspace_id=workspace_id or '')
+            ws = deployer.ensure_workspace(workspace_name)
+            workspace_id = ws['id']
+            if ws['created']:
+                print(f"  ✓ Created workspace '{ws['name']}' (id={workspace_id})")
+            else:
+                print(f"  ✓ Using existing workspace '{ws['name']}' (id={workspace_id})")
+            deployer.workspace_id = workspace_id
+        else:
+            deployer = PBIWorkspaceDeployer(workspace_id=workspace_id)
+
         out_dir = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
         project_dir = os.path.join(out_dir, source_basename)
-        print(f"  Workspace: {args.deploy}")
+        print(f"  Workspace: {workspace_id}")
         print(f"  Project:   {project_dir}")
+
+        gateway_id = getattr(args, 'gateway_bind', None)
 
         # Rolling deployment (--rolling flag)
         if getattr(args, 'rolling', False):
@@ -5910,6 +5951,40 @@ def _run_deploy_to_pbi_service(args, source_basename):
                 print(f"  ✗ Rolling deploy failed: {roll_result['error']}")
                 dataset_id = None
                 report_id = None
+        elif gateway_id:
+            # Deploy + bind to gateway in one pipeline
+            print(f"  Gateway:   {gateway_id}")
+            pipeline = deployer.deploy_and_bind(
+                project_dir,
+                gateway_id=gateway_id,
+                dataset_name=source_basename,
+                refresh=getattr(args, 'deploy_refresh', False),
+            )
+            deploy_info = pipeline.get('deploy', {})
+            if deploy_info.get('status') == 'succeeded':
+                print(f"  ✓ Deployed — dataset={deploy_info.get('dataset_id')}")
+                dataset_id = deploy_info.get('dataset_id')
+                report_id = deploy_info.get('report_id')
+            else:
+                print(f"  ✗ Deploy failed: {deploy_info.get('error')}")
+                dataset_id = None
+                report_id = None
+
+            bind_info = pipeline.get('gateway_bind')
+            if bind_info and bind_info.get('status') == 'succeeded':
+                print(f"  ✓ Bound to gateway {gateway_id}")
+                if bind_info.get('datasources'):
+                    for ds in bind_info['datasources']:
+                        print(f"    - {ds.get('datasourceType', '?')}: "
+                              f"{ds.get('server', '?')}/{ds.get('database', '?')}")
+            elif bind_info:
+                print(f"  ⚠ Gateway binding failed: {bind_info.get('error')}")
+
+            refresh_info = pipeline.get('refresh')
+            if refresh_info and refresh_info.get('status') == 'triggered':
+                print(f"  ✓ Refresh triggered for dataset {dataset_id}")
+            elif refresh_info and refresh_info.get('status') == 'failed':
+                print(f"  ⚠ Post-bind refresh failed: {refresh_info.get('error')}")
         else:
             deploy_result = deployer.deploy_project(
                 project_dir,
