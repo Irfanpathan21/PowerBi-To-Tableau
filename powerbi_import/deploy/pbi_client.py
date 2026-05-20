@@ -293,3 +293,13 @@ class PBIServiceClient:
         """
         url = f'{PBI_API_BASE}/groups/{workspace_id}/reports/{report_id}'
         return self._request('DELETE', url)
+
+    def delete_dataset(self, workspace_id, dataset_id):
+        """Delete a dataset.
+
+        Args:
+            workspace_id: Workspace ID.
+            dataset_id: Dataset ID.
+        """
+        url = f'{PBI_API_BASE}/groups/{workspace_id}/datasets/{dataset_id}'
+        return self._request('DELETE', url)

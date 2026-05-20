@@ -830,7 +830,7 @@ def _convert_find(dax):
     Tableau: FIND(within_text, find_text[, start])
     DAX:     FIND(find_text, within_text[, start[, not_found]])
     """
-    dax = _RE_FINDNTH.sub('FIND(', dax)
+    dax = _RE_FINDNTH.sub('FIND( /* FINDNTH: occurrence arg needs manual review */ ', dax)
     pattern = _RE_FIND
     match = pattern.search(dax)
     while match:
@@ -964,7 +964,7 @@ def _transform_func_call(dax, func_name, transformer_fn):
     the replacement string.  The function handles nested parentheses and
     iterates until no more matches are found.
     """
-    pattern = _get_func_pattern(func_name, word_boundary=False)
+    pattern = _get_func_pattern(func_name, word_boundary=True)
     match = pattern.search(dax)
     while match:
         start_pos = match.end()
@@ -2174,6 +2174,8 @@ def _convert_window_functions(dax, table_name, compute_using=None, column_table_
                 elif dax[i] == ')':
                     depth -= 1
                 i += 1
+            if depth != 0:
+                break
             inner = dax[start_pos:i - 1]
 
             # Parse arguments — inner may contain commas at depth 0
@@ -2241,6 +2243,8 @@ def _convert_window_functions(dax, table_name, compute_using=None, column_table_
                 elif dax[i] == ')':
                     depth -= 1
                 i += 1
+            if depth != 0:
+                break
             inner = dax[start_pos:i - 1]
             args = _split_args(inner)
 

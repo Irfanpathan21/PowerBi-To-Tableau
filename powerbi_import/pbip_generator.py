@@ -814,7 +814,7 @@ class PowerBIProjectGenerator:
                     sort_by = self._clean_field_name(sort_by)
                     if sort_field:
                         # Resolve sort field and sort_by through _field_map for correct Entity/Property
-                        sort_entity = self._main_table
+                        sort_entity = getattr(self, '_main_table', 'Table')
                         sort_prop = sort_field
                         if hasattr(self, '_field_map') and sort_field in self._field_map:
                             sort_entity, sort_prop = self._field_map[sort_field]
@@ -824,7 +824,7 @@ class PowerBIProjectGenerator:
                         }
                         if sort_by:
                             # Resolve sort_by measure through _field_map
-                            by_entity = self._main_table
+                            by_entity = getattr(self, '_main_table', 'Table')
                             by_prop = sort_by
                             if hasattr(self, '_field_map') and sort_by in self._field_map:
                                 by_entity, by_prop = self._field_map[sort_by]
@@ -1370,11 +1370,12 @@ class PowerBIProjectGenerator:
             # Resolve table for the source field
             # _field_map normally stores tuples (table, prop) but callers
             # may also pass dicts with a 'table' key.
-            entry = self._field_map.get(source_field)
+            field_map = getattr(self, '_field_map', {})
+            entry = field_map.get(source_field)
             if entry is None:
-                table_name = self._main_table
+                table_name = getattr(self, '_main_table', 'Table')
             elif isinstance(entry, dict):
-                table_name = entry.get('table', self._main_table)
+                table_name = entry.get('table', getattr(self, '_main_table', 'Table'))
             else:
                 table_name = entry[0]
 
@@ -1641,6 +1642,10 @@ class PowerBIProjectGenerator:
         import shutil
         import time
         
+        # Clear auto-generated measures from previous run (batch mode safety)
+        from powerbi_import.visual_generator import clear_auto_generated_measures
+        clear_auto_generated_measures()
+
         # Build field mapping from Tableau to Power BI model
         self._build_field_mapping(converted_objects)
 
@@ -1914,6 +1919,10 @@ class PowerBIProjectGenerator:
         **not** write ``.platform`` or ``definition.pbir``, making it suitable for
         thin reports that already have those files pointing to a shared semantic model.
         """
+        # Ensure field mapping is initialized (thin reports call this directly)
+        if not hasattr(self, '_field_map'):
+            self._build_field_mapping(converted_objects)
+
         def_dir = os.path.join(report_dir, 'definition')
         os.makedirs(def_dir, exist_ok=True)
 
@@ -3297,7 +3306,8 @@ class PowerBIProjectGenerator:
                     calc_id = calc.get('name', '').replace('[', '').replace(']', '')
                     if calc_id == clean_name:
                         prop = calc.get('caption', clean_name)
-                        self._field_map[clean_name] = (entity, prop)
+                        if hasattr(self, '_field_map'):
+                            self._field_map[clean_name] = (entity, prop)
                         break
 
         # Override entity when the field comes from a datasource whose table

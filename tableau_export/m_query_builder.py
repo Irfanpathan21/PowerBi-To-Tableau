@@ -276,9 +276,10 @@ in
 
 def _gen_m_fallback(details, table_name, columns):
     conn_type = details.get('_conn_type', 'Unknown')
-    col_list = ", ".join([f'"{col["name"]}"' for col in columns if 'name' in col])
-    sample1 = ", ".join([f'"Sample {i+1}"' if col.get('datatype') == 'string' else str(i+1) for i, col in enumerate(columns)])
-    sample2 = ", ".join([f'"Sample {i+2}"' if col.get('datatype') == 'string' else str(i+2) for i, col in enumerate(columns)])
+    named_cols = [col for col in columns if 'name' in col]
+    col_list = ", ".join([f'"{col["name"]}"' for col in named_cols])
+    sample1 = ", ".join([f'"Sample {i+1}"' if col.get('datatype') == 'string' else str(i+1) for i, col in enumerate(named_cols)])
+    sample2 = ", ".join([f'"Sample {i+2}"' if col.get('datatype') == 'string' else str(i+2) for i, col in enumerate(named_cols)])
     return f'''let
     // TODO: Configure the data source for connector type: {conn_type}
     // Replace the sample table below with the actual source expression.
@@ -459,10 +460,10 @@ def _gen_m_pdf(details, table_name, columns):
 
     options_parts = []
     if start_page is not None:
-        options_parts.append(f'[StartPage={int(start_page)}]')
+        options_parts.append(f'StartPage={int(start_page)}')
     if end_page is not None:
-        options_parts.append(f'[EndPage={int(end_page)}]')
-    options_str = ', '.join(options_parts)
+        options_parts.append(f'EndPage={int(end_page)}')
+    options_str = '[' + ', '.join(options_parts) + ']' if options_parts else ''
 
     m_query = 'let\n'
     m_query += f'    // Source PDF: {filename}\n'
@@ -746,12 +747,13 @@ def _gen_m_sqlproxy(details, table_name, columns):
     channel = details.get('channel', 'https')
 
     col_list = ', '.join([f'"{ col["name"] }"' for col in columns if 'name' in col])
+    named_cols = [col for col in columns if 'name' in col]
     sample1 = ', '.join(
         [f'"Sample {i+1}"' if col.get('datatype') == 'string' else str(i + 1)
-         for i, col in enumerate(columns)])
+         for i, col in enumerate(named_cols)])
     sample2 = ', '.join(
         [f'"Sample {i+2}"' if col.get('datatype') == 'string' else str(i + 2)
-         for i, col in enumerate(columns)])
+         for i, col in enumerate(named_cols)])
 
     return f'''let
     // ================================================================
@@ -1725,7 +1727,7 @@ def m_transform_replace_errors(columns, replacement=None):
         replacement: replacement value (default: null)
     """
     repl = str(replacement) if replacement is not None else 'null'
-    transforms = ', '.join([f'{{"{c}", each {repl}}}' for c in columns])
+    transforms = ', '.join([f'{{"{c}", {repl}}}' for c in columns])
     return ('#"Replaced Errors"',
             f'Table.ReplaceErrorValues({{prev}}, {{{transforms}}})')
 

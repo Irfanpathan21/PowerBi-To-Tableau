@@ -301,7 +301,11 @@ class TelemetryCollector:
                 for line in f:
                     line = line.strip()
                     if line:
-                        entries.append(json.loads(line))
+                        try:
+                            entries.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            logger.debug("Skipping corrupted JSONL line")
+                            continue
         except FileNotFoundError:
             pass
         except Exception as exc:

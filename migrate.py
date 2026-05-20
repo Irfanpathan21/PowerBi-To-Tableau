@@ -3879,7 +3879,8 @@ def _run_add_to_model(args):
 
             # Regenerate TMDL from merged model
             merged = result['merged']
-            importer2 = PowerBIImporter()
+            from pbip_generator import PowerBIProjectGenerator
+            gen = PowerBIProjectGenerator()
             project_dir = model_dir
             sm_dir = None
             for entry in os.listdir(model_dir):
@@ -3888,7 +3889,7 @@ def _run_add_to_model(args):
                     break
 
             if sm_dir:
-                importer2.create_semantic_model_structure(
+                gen.create_semantic_model_structure(
                     project_dir, manifest.model_name, merged
                 )
 
@@ -3967,15 +3968,15 @@ def _run_remove_from_model(args):
             # Regenerate TMDL from updated model
             merged = result.get('merged')
             if merged:
-                from import_to_powerbi import PowerBIImporter
-                importer = PowerBIImporter()
+                from pbip_generator import PowerBIProjectGenerator
+                gen = PowerBIProjectGenerator()
                 sm_dir = None
                 for entry in os.listdir(model_dir):
                     if entry.endswith('.SemanticModel'):
                         sm_dir = os.path.join(model_dir, entry)
                         break
                 if sm_dir:
-                    importer.create_semantic_model_structure(
+                    gen.create_semantic_model_structure(
                         model_dir, manifest.model_name, merged
                     )
 
@@ -4335,7 +4336,7 @@ def _run_goals_generation(args, source_basename):
         from goals_generator import generate_goals_json, write_goals_artifact
         import xml.etree.ElementTree as _ET
 
-        twb_path = args.workbook
+        twb_path = args.tableau_file
         pulse_root = None
         if twb_path and os.path.isfile(twb_path):
             if twb_path.endswith('.twbx'):

@@ -489,6 +489,12 @@ def resolve_published_datasource(datasource, server_client=None):
 def _parse_published_datasource_file(file_path):
     """Parse a downloaded .tdsx/.tds file into a datasource dict."""
     try:
+        # Import safe_parse_xml for XXE protection on untrusted files
+        try:
+            from powerbi_import.security_validator import safe_parse_xml
+        except ImportError:
+            safe_parse_xml = None
+
         ext = os.path.splitext(file_path)[1].lower()
         if ext == '.tdsx':
             with zipfile.ZipFile(file_path, 'r') as z:
@@ -496,11 +502,15 @@ def _parse_published_datasource_file(file_path):
                 if not tds_names:
                     return None
                 with z.open(tds_names[0]) as f:
-                    tree = ET.parse(f)
+                    xml_content = f.read()
         else:
-            tree = ET.parse(file_path)
+            with open(file_path, 'rb') as f:
+                xml_content = f.read()
 
-        root = tree.getroot()
+        if safe_parse_xml is not None:
+            root = safe_parse_xml(xml_content)
+        else:
+            root = ET.fromstring(xml_content)
         ds_elem = root.find('.//datasource')
         if ds_elem is None:
             ds_elem = root if root.tag == 'datasource' else None

@@ -151,6 +151,13 @@ def _run_migration(job_id, input_path, options=None):
     except Exception as exc:
         logger.exception("Migration failed for job %s", job_id)
         _update_job(job_id, status='failed', error=str(exc))
+    finally:
+        # Clean up the uploaded temp file
+        try:
+            if input_path and os.path.isfile(input_path):
+                os.unlink(input_path)
+        except OSError:
+            pass
 
 
 # ── HTTP Handler ──────────────────────────────────────────────────────────────
@@ -232,7 +239,7 @@ class MigrationHandler(BaseHTTPRequestHandler):
 
             # Validate output directory is under temp
             abs_out = os.path.abspath(output_dir)
-            if not abs_out.startswith(os.path.abspath(tempfile.gettempdir())):
+            if not abs_out.startswith(os.path.abspath(tempfile.gettempdir()) + os.sep):
                 self._send_error(400, 'Invalid output directory')
                 return
 

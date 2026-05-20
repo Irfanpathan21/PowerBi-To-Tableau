@@ -235,8 +235,8 @@ def _compare_calculations(prev_calcs, curr_calcs):
 def _compare_worksheets(prev_ws, curr_ws):
     """Compare worksheets."""
     entries = []
-    prev_names = {w.get('name', '') for w in prev_ws if w.get('name')}
-    curr_names = {w.get('name', '') for w in curr_ws if w.get('name')}
+    prev_names = {w.get('name', '') for w in prev_ws if isinstance(w, dict) and w.get('name')}
+    curr_names = {w.get('name', '') for w in curr_ws if isinstance(w, dict) and w.get('name')}
 
     for name in curr_names - prev_names:
         entries.append(SchemaDriftEntry('worksheet', 'added', name))
@@ -244,11 +244,11 @@ def _compare_worksheets(prev_ws, curr_ws):
         entries.append(SchemaDriftEntry('worksheet', 'removed', name))
 
     # Check for field changes in surviving worksheets
-    prev_map = {w.get('name', ''): w for w in prev_ws if w.get('name')}
-    curr_map = {w.get('name', ''): w for w in curr_ws if w.get('name')}
+    prev_map = {w.get('name', ''): w for w in prev_ws if isinstance(w, dict) and w.get('name')}
+    curr_map = {w.get('name', ''): w for w in curr_ws if isinstance(w, dict) and w.get('name')}
     for name in curr_names & prev_names:
-        prev_fields = {f.get('name', '') for f in prev_map[name].get('fields', []) if f.get('name')}
-        curr_fields = {f.get('name', '') for f in curr_map[name].get('fields', []) if f.get('name')}
+        prev_fields = {f.get('name', '') for f in prev_map[name].get('fields', []) if isinstance(f, dict) and f.get('name')}
+        curr_fields = {f.get('name', '') for f in curr_map[name].get('fields', []) if isinstance(f, dict) and f.get('name')}
         if prev_fields != curr_fields:
             added = curr_fields - prev_fields
             removed = prev_fields - curr_fields

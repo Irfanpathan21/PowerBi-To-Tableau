@@ -58,23 +58,83 @@ def optimize_dax(formula, rule_set=None):
 
 
 def _rule_isblank_to_coalesce(formula):
-    """Convert IF(ISBLANK(x), default, x) → COALESCE(x, default)."""
-    # Pattern: IF(ISBLANK(expr), replacement, expr) or IF(ISBLANK(expr), expr, replacement)
-    pattern = r'IF\s*\(\s*ISBLANK\s*\(\s*([^)]+)\s*\)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)'
+    """Convert IF(ISBLANK(x), default, x) → COALESCE(x, default).
 
-    def _replace(m):
-        blank_expr = m.group(1).strip()
-        branch_true = m.group(2).strip()
-        branch_false = m.group(3).strip()
-        # IF(ISBLANK(x), default, x) → COALESCE(x, default)
+    Uses balanced-paren extraction to handle nested expressions like
+    ``IF(ISBLANK(SUM(x)), 0, SUM(x))``.
+    """
+    pat = re.compile(r'IF\s*\(\s*ISBLANK\s*\(', re.IGNORECASE)
+    result = formula
+    match = pat.search(result)
+    while match:
+        # Extract the ISBLANK inner expression using balanced parens
+        isblank_start = match.end()
+        depth, i = 1, isblank_start
+        while i < len(result) and depth > 0:
+            if result[i] == '(':
+                depth += 1
+            elif result[i] == ')':
+                depth -= 1
+            i += 1
+        if depth != 0:
+            break
+        blank_expr = result[isblank_start:i - 1].strip()
+
+        # Now we need to parse ", branch_true, branch_false)"
+        # Skip whitespace and comma after ISBLANK closing paren
+        j = i
+        while j < len(result) and result[j] in ' \t':
+            j += 1
+        if j >= len(result) or result[j] != ',':
+            break
+        j += 1  # skip comma
+
+        # Extract branch_true (balanced, comma-delimited at depth 0)
+        depth = 0
+        k = j
+        while k < len(result):
+            if result[k] == '(':
+                depth += 1
+            elif result[k] == ')':
+                if depth == 0:
+                    break
+                depth -= 1
+            elif result[k] == ',' and depth == 0:
+                break
+            k += 1
+        if k >= len(result) or result[k] != ',':
+            break
+        branch_true = result[j:k].strip()
+
+        # Extract branch_false (balanced, paren-delimited at depth 0)
+        k += 1  # skip comma
+        depth = 0
+        end = k
+        while end < len(result):
+            if result[end] == '(':
+                depth += 1
+            elif result[end] == ')':
+                if depth == 0:
+                    break
+                depth -= 1
+            end += 1
+        if end >= len(result):
+            break
+        branch_false = result[k:end].strip()
+
+        # Try the transformation
+        replacement = None
         if branch_false == blank_expr:
-            return f'COALESCE({blank_expr}, {branch_true})'
-        # IF(ISBLANK(x), x, default) — unusual but handle
-        if branch_true == blank_expr:
-            return f'COALESCE({blank_expr}, {branch_false})'
-        return m.group(0)
+            replacement = f'COALESCE({blank_expr}, {branch_true})'
+        elif branch_true == blank_expr:
+            replacement = f'COALESCE({blank_expr}, {branch_false})'
 
-    return re.sub(pattern, _replace, formula)
+        if replacement:
+            result = result[:match.start()] + replacement + result[end + 1:]
+            match = pat.search(result, match.start() + len(replacement))
+        else:
+            match = pat.search(result, match.end())
+    return result
 
 
 def _rule_nested_if_to_switch(formula):
@@ -172,8 +232,12 @@ def _rule_constant_fold(formula):
     expressions). String literals are protected to prevent corruption of
     date/version strings like ``"2025-01-01"`` whose internal ``2025-01``
     would otherwise match the arithmetic pattern.
+
+    Multiplication and division are folded before addition and subtraction
+    to respect operator precedence.
     """
-    pattern = r'\b(\d+)\s*([+\-*/])\s*(\d+)\b'
+    mul_div_pattern = r'\b(\d+)\s*([*/])\s*(\d+)\b'
+    add_sub_pattern = r'\b(\d+)\s*([+\-])\s*(\d+)\b'
 
     def _fold(m):
         a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
@@ -192,7 +256,10 @@ def _rule_constant_fold(formula):
         return m.group(0)
 
     protected, literals = _protect_string_literals(formula)
-    folded = re.sub(pattern, _fold, protected)
+    # Fold * and / first (higher precedence)
+    folded = re.sub(mul_div_pattern, _fold, protected)
+    # Then fold + and -
+    folded = re.sub(add_sub_pattern, _fold, folded)
     return _restore_string_literals(folded, literals)
 
 

@@ -103,7 +103,7 @@ def tableau_formula_to_m(formula):
     m = re.sub(r'\bTRIM\s*\(', 'Text.Trim(', m, flags=re.IGNORECASE)
     m = re.sub(r'\bROUND\s*\(', 'Number.Round(', m, flags=re.IGNORECASE)
     m = re.sub(r'\bABS\s*\(', 'Number.Abs(', m, flags=re.IGNORECASE)
-    m = re.sub(r'\bINT\s*\(', 'Number.IntegerDivide(', m, flags=re.IGNORECASE)
+    m = re.sub(r'\bINT\s*\(', 'Int64.From(', m, flags=re.IGNORECASE)
 
     return m.strip()
 

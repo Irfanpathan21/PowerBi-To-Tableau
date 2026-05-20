@@ -69,8 +69,9 @@ class FabricSemanticModelGenerator:
         }
 
         # Output TMDL inside SemanticModel/definition
-        definition_dir = os.path.join(self.sm_dir, 'definition')
-        os.makedirs(definition_dir, exist_ok=True)
+        # Note: generate_tmdl() creates its own 'definition/' subdirectory,
+        # so pass sm_dir (not a pre-created definition_dir) to avoid double-nesting.
+        os.makedirs(self.sm_dir, exist_ok=True)
 
         # Use the existing tmdl_generator — import mode for now
         # (Direct Lake is metadata-only — TMDL partitions stay as M/import
@@ -79,7 +80,7 @@ class FabricSemanticModelGenerator:
             datasources=datasources,
             report_name=self.model_name,
             extra_objects=extra_objects,
-            output_dir=definition_dir,
+            output_dir=self.sm_dir,
             calendar_start=calendar_start,
             calendar_end=calendar_end,
             culture=culture,

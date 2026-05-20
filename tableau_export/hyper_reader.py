@@ -1017,31 +1017,33 @@ def discover_multi_table_hyper(file_path):
     # Fallback: SQLite approach (single-schema only)
     try:
         import sqlite3
-        conn = sqlite3.connect(file_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' "
-            "AND name NOT LIKE 'sqlite_%'")
-        for (table_name,) in cursor.fetchall():
-            cursor.execute(f'PRAGMA table_info("{table_name}")')
-            columns = [{
-                'name': row[1],
-                'hyper_type': row[2].upper(),
-                'm_type': _EXTENDED_TYPE_MAP.get(
-                    row[2].upper(), _HYPER_TO_M_TYPE.get(row[2].lower(), 'Text')),
-                'nullable': not row[3],
-            } for row in cursor.fetchall()]
+        conn = sqlite3.connect(f'file:{file_path}?mode=ro', uri=True)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name NOT LIKE 'sqlite_%'")
+            for (table_name,) in cursor.fetchall():
+                cursor.execute(f'PRAGMA table_info("{table_name}")')
+                columns = [{
+                    'name': row[1],
+                    'hyper_type': row[2].upper(),
+                    'm_type': _EXTENDED_TYPE_MAP.get(
+                        row[2].upper(), _HYPER_TO_M_TYPE.get(row[2].lower(), 'Text')),
+                    'nullable': not row[3],
+                } for row in cursor.fetchall()]
 
-            cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
-            row_count = cursor.fetchone()[0]
+                cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+                row_count = cursor.fetchone()[0]
 
-            tables.append({
-                'schema': 'Extract',
-                'table': table_name,
-                'columns': columns,
-                'row_count': row_count,
-            })
-        conn.close()
+                tables.append({
+                    'schema': 'Extract',
+                    'table': table_name,
+                    'columns': columns,
+                    'row_count': row_count,
+                })
+        finally:
+            conn.close()
     except Exception as e:
         logger.warning(f'SQLite multi-table discovery failed: {e}')
 

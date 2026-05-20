@@ -1443,7 +1443,7 @@ def merge_semantic_models(all_extracted: List[dict],
     # 4. Merge remaining objects (union, deduplicated by name)
     for key in ('sets', 'groups', 'bins', 'sort_orders',
                 'custom_sql', 'user_filters', 'filters', 'stories', 'actions'):
-        merged[key] = _merge_list_by_name(all_extracted, key)
+        merged[key] = _merge_list_by_name(all_extracted, key, workbook_names=workbook_names)
 
     # 4b. Merge hierarchies with level-aware deduplication
     merged['hierarchies'] = _merge_hierarchies(all_extracted, workbook_names)
@@ -1753,11 +1753,12 @@ def _merge_parameters(all_extracted: List[dict],
     return result
 
 
-def _merge_list_by_name(all_extracted: List[dict], key: str) -> list:
+def _merge_list_by_name(all_extracted: List[dict], key: str, workbook_names: List[str] = None) -> list:
     """Merge a list-type object by deduplicating on 'name' field."""
     seen_names: Dict[str, dict] = {}  # name → item (for lineage tracking)
     result = []
     for idx, extracted in enumerate(all_extracted):
+        wb_label = workbook_names[idx] if workbook_names and idx < len(workbook_names) else f'wb_{idx}'
         items = extracted.get(key, [])
         if not isinstance(items, list):
             continue
@@ -1765,11 +1766,11 @@ def _merge_list_by_name(all_extracted: List[dict], key: str) -> list:
             name = item.get('name', '')
             if name and name in seen_names:
                 # Track additional source
-                seen_names[name].setdefault('_source_workbooks', []).append(f'wb_{idx}')
+                seen_names[name].setdefault('_source_workbooks', []).append(wb_label)
                 seen_names[name]['_merge_action'] = 'deduplicated'
                 continue
             item_copy = copy.deepcopy(item)
-            item_copy['_source_workbooks'] = [f'wb_{idx}']
+            item_copy['_source_workbooks'] = [wb_label]
             item_copy['_merge_action'] = 'unique'
             if name:
                 seen_names[name] = item_copy
@@ -2825,7 +2826,14 @@ def validate_rls_propagation(merged: dict) -> List[dict]:
         List of ``{role, table, status, reason}`` dicts.
     """
     tables = {t.get('name', '') for t in merged.get('tables', []) if t.get('name')}
+    # Also search inside datasources (merge output nests tables there)
+    for ds in merged.get('datasources', []):
+        for t in ds.get('tables', []):
+            if t.get('name'):
+                tables.add(t['name'])
     rels = merged.get('relationships', [])
+    for ds in merged.get('datasources', []):
+        rels = rels + ds.get('relationships', [])
     # Build adjacency set for connected tables
     connected = set()
     for r in rels:
@@ -2900,7 +2908,14 @@ def detect_isolated_tables(merged: dict) -> List[dict]:
         relationship connections.
     """
     tables = [t.get('name', '') for t in merged.get('tables', []) if t.get('name')]
+    # Also search inside datasources (merge output nests tables there)
+    for ds in merged.get('datasources', []):
+        for t in ds.get('tables', []):
+            if t.get('name'):
+                tables.append(t['name'])
     rels = merged.get('relationships', [])
+    for ds in merged.get('datasources', []):
+        rels = rels + ds.get('relationships', [])
     connected = set()
     for r in rels:
         ft = r.get('fromTable', '')

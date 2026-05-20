@@ -328,7 +328,10 @@ class TableauServerClient:
         """
         url = f'{self.site_url}/workbooks/{workbook_id}/connections'
         resp = self._request('GET', url)
-        return resp.get('connections', {}).get('connection', [])
+        conns = resp.get('connections', {}).get('connection', [])
+        if isinstance(conns, dict):
+            conns = [conns]
+        return conns
 
     def download_workbook(self, workbook_id, output_path,
                           include_extract=True):
@@ -655,13 +658,18 @@ class TableauServerClient:
         resp = self._request('GET', url)
         perms_data = resp.get('permissions', {})
         grant_list = perms_data.get('granteeCapabilities', [])
+        if isinstance(grant_list, dict):
+            grant_list = [grant_list]
 
         permissions = []
         for grant in grant_list:
             grantee = grant.get('user') or grant.get('group', {})
             grantee_type = 'user' if 'user' in grant else 'group'
             capabilities = {}
-            for cap in grant.get('capabilities', {}).get('capability', []):
+            cap_list = grant.get('capabilities', {}).get('capability', [])
+            if isinstance(cap_list, dict):
+                cap_list = [cap_list]
+            for cap in cap_list:
                 capabilities[cap.get('name', '')] = cap.get('mode', '')
 
             permissions.append({
@@ -751,15 +759,14 @@ class TableauServerClient:
             bool: True if authentication succeeded.
         """
         url = f'{self.server_url}/api/{self.api_version}/auth/signin'
-        payload = json.dumps({
-            'credentials': {
-                'jwt': jwt_token,
-                'site': {'contentUrl': site_name or self.site_id},
-            }
-        })
 
         try:
-            resp = self._request('POST', url, data=payload)
+            resp = self._request('POST', url, json_body={
+                'credentials': {
+                    'jwt': jwt_token,
+                    'site': {'contentUrl': site_name or self.site_id},
+                }
+            })
             creds = resp.get('credentials', {})
             self._auth_token = creds.get('token', '')
             site_data = creds.get('site', {})
@@ -784,14 +791,13 @@ class TableauServerClient:
             dict: GraphQL response data.
         """
         url = f'{self.server_url}/api/metadata/graphql'
-        payload = json.dumps({
-            'query': query,
-            'variables': variables or {},
-        })
 
         try:
-            resp = self._request('POST', url, data=payload)
-            return resp.get('data', {})
+            resp = self._request('POST', url, json_body={
+                'query': query,
+                'variables': variables or {},
+            })
+            return resp.get('data') or {}
         except Exception as e:
             logger.error(f'Metadata GraphQL query failed: {e}')
             return {}

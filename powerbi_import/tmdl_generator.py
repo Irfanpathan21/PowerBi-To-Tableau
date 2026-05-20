@@ -3356,8 +3356,8 @@ def _detect_many_to_many(model, datasources):
             is_inferred = rel_name.startswith('inferred_')
             to_col_lower = to_col.lower()
             _key_indicators = {'id', 'key', 'code', 'pk', 'fk', 'sk', 'no', 'number', 'num'}
-            is_key_column = any(kw in to_col_lower.split() or to_col_lower.endswith(kw) or to_col_lower.startswith(kw)
-                                for kw in _key_indicators)
+            _key_sep_re = re.compile(r'(?:^|[_\s])(' + '|'.join(_key_indicators) + r')(?:$|[_\s])', re.IGNORECASE)
+            is_key_column = bool(_key_sep_re.search(to_col_lower)) or to_col_lower in _key_indicators
 
             if is_inferred and not is_key_column:
                 # Inferred relationship on a non-key column → manyToMany (safe default)
@@ -3491,7 +3491,7 @@ def _replace_related_in_aggx_context(expr, m2m_pairs):
         re.IGNORECASE)
 
     result = expr
-    for m in aggx_pattern.finditer(expr):
+    for m in reversed(list(aggx_pattern.finditer(expr))):
         iter_table = m.group(2)
         body_start = m.end()
         # Find the matching closing paren for the AGGX call
@@ -5579,7 +5579,7 @@ def _write_tmdl_files(model_data, output_dir):
     expected_files = set()
     for table in tables:
         tname = table.get('name', 'Table')
-        expected_files.add(tname + '.tmdl')
+        expected_files.add(_safe_filename(tname) + '.tmdl')
     for existing in os.listdir(tables_dir):
         if existing.endswith('.tmdl') and existing not in expected_files:
             stale_path = os.path.join(tables_dir, existing)
