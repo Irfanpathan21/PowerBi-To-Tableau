@@ -43,47 +43,71 @@ pip install tableauhyperapi           # .hyper extract file reading (v2+ format)
 
 ### More ways to migrate
 
-| Use Case | Command |
-|----------|---------|
-| 📄 **Single workbook** | `python migrate.py workbook.twbx` |
-| 📄 With Prep flow | `python migrate.py workbook.twbx --prep flow.tflx` |
-| 📄 Readiness check only | `python migrate.py workbook.twbx --assess` |
-| 📁 **Batch (folder)** | `python migrate.py --batch folder/ --output-dir /tmp/out` |
-| 📁 Global merge analysis | `python migrate.py --global-assess --batch folder/` |
-| ☁️ **Server — single** | `python migrate.py --server URL --workbook "Name" --token-name pat --token-secret secret` |
-| ☁️ Server — batch project | `python migrate.py --server URL --server-batch Project --server-assets all --server-preserve-folders --token-name pat --token-secret secret --output-dir ./output` |
-| ☁️ Server — batch all | `python migrate.py --server URL --server-batch all --server-assets all --token-name pat --token-secret secret --output-dir ./output` |
-| 🔗 **Shared model** | `python migrate.py --shared-model wb1.twbx wb2.twbx --model-name "Sales"` |
-| 🔗 Merge assessment | `python migrate.py --shared-model wb1.twbx wb2.twbx --assess-merge` |
-| 🚀 **Deploy to PBI** | `python migrate.py workbook.twbx --deploy WORKSPACE_ID --deploy-refresh` |
-| 🚀 Fabric-native output | `python migrate.py workbook.twbx --output-format fabric` |
-| 🌿 **Prep lineage** | `python migrate.py --prep-lineage folder/ flow1.tfl flow2.tfl` |
-
-<details>
-<summary><b>More examples</b> (click to expand)</summary>
+#### 📄 Single workbook
 
 ```bash
-# Interactive wizard (guided step-by-step)
-python migrate.py workbook.twbx --wizard
-
-# Download only workbooks and datasources from server (flat directory)
-python migrate.py --server https://tableau.company.com --server-batch Sales \
-    --server-assets workbooks datasources --token-name pat --token-secret secret
-
-# Deploy shared model as bundle to Fabric
-python migrate.py --shared-model wb1.twbx wb2.twbx --deploy-bundle WORKSPACE_ID --bundle-refresh
-
-# Deploy an existing shared model project
-python migrate.py --deploy-bundle WORKSPACE_ID --output-dir artifacts/shared/MyModel
-
-# Optimize DAX + auto-inject Time Intelligence measures
-python migrate.py workbook.twbx --optimize-dax --time-intelligence auto
-
-# Bulk Prep Flow export (Power Query M + sources + lineage, no .pbip)
-python migrate.py --batch examples/prep_portfolio/ --output-dir /tmp/prep_output
+python migrate.py workbook.twbx
+python migrate.py workbook.twbx --prep flow.tflx          # with Tableau Prep flow
+python migrate.py workbook.twbx --assess                   # readiness check only
+python migrate.py workbook.twbx --wizard                   # interactive guided wizard
 ```
 
-</details>
+#### 📁 Batch migration
+
+```bash
+python migrate.py --batch folder/ --output-dir /tmp/out
+python migrate.py --global-assess --batch folder/          # cross-workbook merge analysis
+```
+
+#### ☁️ Tableau Server / Cloud
+
+```bash
+# Single workbook from server
+python migrate.py --server URL --workbook "Name" \
+    --token-name pat --token-secret secret
+
+# All workbooks from a project (with flows & datasources)
+python migrate.py --server URL --server-batch "Project Name" \
+    --server-assets all --server-preserve-folders \
+    --token-name pat --token-secret secret --output-dir ./output
+
+# All workbooks from the entire site
+python migrate.py --server URL --server-batch all \
+    --server-assets all \
+    --token-name pat --token-secret secret --output-dir ./output
+```
+
+#### 🔗 Shared semantic model
+
+```bash
+python migrate.py --shared-model wb1.twbx wb2.twbx --model-name "Sales"
+python migrate.py --shared-model wb1.twbx wb2.twbx --assess-merge    # assess feasibility
+```
+
+#### 🚀 Deploy & output formats
+
+```bash
+python migrate.py workbook.twbx --deploy WORKSPACE_ID --deploy-refresh
+python migrate.py workbook.twbx --output-format fabric     # Lakehouse + Dataflow + Notebook + DirectLake
+python migrate.py --shared-model wb1.twbx wb2.twbx \
+    --deploy-bundle WORKSPACE_ID --bundle-refresh           # shared model bundle deploy
+```
+
+#### ⚡ Quality & optimization
+
+```bash
+python migrate.py workbook.twbx --qa                       # full QA suite
+python migrate.py workbook.twbx --optimize-dax --time-intelligence auto
+python migrate.py workbook.twbx --check-drift /snapshots   # schema drift detection
+python migrate.py workbook.twbx --autoplay                 # post-migration validation
+```
+
+#### 🌿 Tableau Prep lineage
+
+```bash
+python migrate.py --prep-lineage folder/ flow1.tfl flow2.tfl
+python migrate.py --batch examples/prep_portfolio/ --output-dir /tmp/prep_output
+```
 
 ---
 
@@ -638,76 +662,81 @@ TableauToPowerBI/
 
 ## 📝 CLI Reference
 
-<details>
-<summary><b>🔧 All CLI flags</b> (click to expand)</summary>
-
 | Flag | Description |
 |------|-------------|
+| **Input & Output** | |
+| `workbook.twbx` | Positional argument — path to Tableau workbook |
 | `--prep FILE` | Tableau Prep flow (.tfl/.tflx) to merge with a workbook |
-| `--prep-lineage PATHS` | Cross-flow lineage analysis for .tfl/.tflx files |
 | `--output-dir DIR` | Custom output directory (default: `artifacts/powerbi_projects/`) |
-| `--output-format FORMAT` | Output format: `pbip` (default), `tmdl`, or `pbir` |
-| `--verbose` / `-v` | Enable verbose (DEBUG) console logging |
-| `--quiet` / `-q` | Suppress all output except errors |
-| `--log-file FILE` | Write logs to a file |
-| `--batch DIR` | Batch-migrate all .twb/.twbx files in a directory |
-| `--batch-config FILE` | JSON batch config with per-workbook overrides |
+| `--output-format FORMAT` | Output format: `pbip` (default) or `fabric` |
+| `--dry-run` | Preview migration without writing files |
 | `--skip-extraction` | Skip extraction, re-use existing datasources.json |
 | `--skip-conversion` | Skip DAX/M conversion, re-use existing JSON files |
-| `--dry-run` | Preview migration without writing files |
+| `--rollback` | Backup existing .pbip project before overwriting |
+| **Batch** | |
+| `--batch DIR` | Batch-migrate all .twb/.twbx files in a directory |
+| `--batch-config FILE` | JSON batch config with per-workbook overrides |
+| `--workers N` | Parallel batch processing with N workers |
+| **Tableau Server / Cloud** | |
+| `--server URL` | Tableau Server/Cloud URL |
+| `--site SITE_ID` | Tableau site content URL |
+| `--workbook NAME` | Workbook name or LUID to download |
+| `--token-name NAME` | PAT name for Tableau Server auth |
+| `--token-secret SECRET` | PAT secret for Tableau Server auth |
+| `--server-batch PROJECT` | Download all workbooks from a server project (or `all`) |
+| `--server-assets TYPE [...]` | Asset types: `workbooks`, `flows`, `datasources`, `all` |
+| `--server-preserve-folders` | Mirror Tableau Server project folder structure locally |
+| `--migrate-schedules` | Extract Tableau refresh schedules → PBI refresh config JSON |
+| `--server-discover` | Discover site topology, dependency graph, and topology report |
+| `--server-assess` | Server-level portfolio readiness report (GREEN/YELLOW/RED) |
+| `--plan-migration` | Generate migration plan with wave assignments and effort estimates |
+| `--team-size N` | Number of migration engineers for timeline calculation (default: 1) |
+| **Shared Semantic Model** | |
+| `--shared-model WB [WB ...]` | Merge multiple workbooks into one shared semantic model |
+| `--model-name NAME` | Name for the shared semantic model (default: `SharedModel`) |
+| `--assess-merge` | Only assess merge feasibility |
+| `--force-merge` | Force merge even if score is below threshold |
+| `--strict-merge` | Block generation on merge validation failures |
+| `--merge-preview` | Preview merge results without generating output |
+| `--global-assess` | Cross-workbook pairwise merge scoring and clustering |
+| **Deploy** | |
+| `--deploy WORKSPACE_ID` | Deploy to Power BI Service workspace |
+| `--deploy-refresh` | Trigger dataset refresh after deploy |
+| `--deploy-bundle WS_ID` | Deploy shared model + thin reports as atomic Fabric bundle |
+| `--bundle-refresh` | Trigger dataset refresh after bundle deployment |
+| `--sync` | Auto-deploy after incremental change detection |
+| **Semantic Model** | |
 | `--calendar-start YEAR` | Calendar table start year (default: 2020) |
 | `--calendar-end YEAR` | Calendar table end year (default: 2030) |
 | `--culture LOCALE` | Culture/locale for linguistic metadata (e.g., `fr-FR`) |
+| `--languages LOCALES` | Multi-language culture TMDL files (e.g., `fr-FR,de-DE`) |
 | `--mode MODE` | Semantic model mode: `import`, `directquery`, or `composite` |
+| `--composite-threshold COLS` | Per-table StorageMode threshold for Import vs DirectQuery |
+| `--agg-tables MODE` | Auto-generate aggregation tables: `auto` or `none` |
+| `--goals` | Convert Tableau Pulse metrics to PBI Goals |
+| **Quality & Optimization** | |
 | `--assess` | Run pre-migration assessment and strategy analysis |
-| `--deploy WORKSPACE_ID` | Deploy to Power BI Service workspace |
-| `--deploy-refresh` | Trigger dataset refresh after deploy |
-| `--rollback` | Backup existing .pbip project before overwriting |
-| `--incremental DIR` | Merge changes into existing .pbip |
+| `--qa` | Full QA suite: validate → auto-fix → governance → compare |
+| `--optimize-dax` | Run DAX optimizer (IF→SWITCH, COALESCE, constant folding) |
+| `--no-optimize-dax` | Disable DAX optimizer |
+| `--time-intelligence MODE` | Auto-inject Time Intelligence measures: `auto` or `none` |
+| `--validate-data` | Post-migration data validation (query equivalence) |
+| `--compare` | Generate comparison report (HTML) |
+| `--no-compare` | Disable comparison report generation |
+| `--check-drift DIR` | Compare extraction against saved snapshot for schema drift |
+| `--autoplay` | Post-migration validation checks |
+| **Prep Flows** | |
+| `--prep-lineage PATHS` | Cross-flow lineage analysis for .tfl/.tflx files |
+| **Other** | |
+| `--verbose` / `-v` | Enable verbose (DEBUG) console logging |
+| `--quiet` / `-q` | Suppress all output except errors |
+| `--log-file FILE` | Write logs to a file |
 | `--wizard` | Launch interactive migration wizard |
 | `--paginated` | Generate paginated report layout |
 | `--config FILE` | Load settings from a JSON configuration file |
 | `--telemetry` | Enable anonymous usage telemetry (opt-in) |
-| `--compare` | Generate comparison report (HTML) |
 | `--dashboard` | Generate telemetry dashboard |
-| `--server URL` | Tableau Server/Cloud URL |
-| `--site SITE_ID` | Tableau site content URL |
-| `--workbook NAME` | Workbook name/LUID to download |
-| `--token-name NAME` | PAT name for Tableau Server auth |
-| `--token-secret SECRET` | PAT secret for Tableau Server auth |
-| `--server-batch PROJECT` | Download all workbooks from a server project |
-| `--server-assets TYPE [...]` | Asset types to download: `workbooks`, `flows`, `datasources`, `all` (default: workbooks flows) |
-| `--server-preserve-folders` | Mirror Tableau Server project folder structure locally |
-| `--migrate-schedules` | Extract Tableau refresh schedules/subscriptions → PBI refresh config JSON |
-| `--server-discover` | Discover site topology, dependency graph, and topology report |
-| `--server-assess` | Server-level portfolio readiness report (per-workbook GREEN/YELLOW/RED) |
-| `--plan-migration` | Generate migration plan with wave assignments, effort estimates, and timeline |
-| `--team-size N` | Number of migration engineers for timeline calculation (default: 1) |
-| `--languages LOCALES` | Multi-language culture TMDL files (e.g., `fr-FR,de-DE`) |
-| `--goals` | Convert Tableau Pulse metrics to PBI Goals |
-| `--shared-model WB [WB ...]` | Merge multiple workbooks into one shared semantic model |
-| `--model-name NAME` | Name for the shared semantic model (default: `SharedModel`) |
-| `--assess-merge` | Only assess merge feasibility for `--shared-model` |
-| `--force-merge` | Force merge even if score is below threshold |
-| `--strict-merge` | Block generation on merge validation failures (cycles, type errors) |
-| `--merge-preview` | Preview merge results without generating output |
-| `--global-assess` | Cross-workbook pairwise merge scoring and clustering |
-| `--deploy-bundle WS_ID` | Deploy shared model + thin reports as atomic Fabric bundle |
-| `--bundle-refresh` | Trigger dataset refresh after bundle deployment |
-| `--output-format FORMAT` | Output format: `pbip` (default) or `fabric` (Lakehouse + Dataflow + Notebook + DirectLake) |
-| `--optimize-dax` | Run DAX optimizer pass (IF→SWITCH, COALESCE, constant folding) |
-| `--time-intelligence MODE` | Auto-inject Time Intelligence measures: `auto` or `none` |
-| `--validate-data` | Post-migration data validation (query equivalence) |
-| `--composite-threshold COLS` | Per-table StorageMode: tables below threshold → Import, above → DirectQuery |
-| `--agg-tables MODE` | Auto-generate aggregation tables: `auto` or `none` |
-| `--workers N` | Parallel batch processing with N workers |
-| `--sync` | Auto-deploy after incremental change detection |
-| `--check-drift DIR` | Compare current extraction against saved snapshot for schema drift |
-| `--qa` | Run full QA suite: validate → auto-fix → governance → compare → qa_report.json |
-| `--no-optimize-dax` | Disable DAX optimizer (on by default) |
-| `--no-compare` | Disable comparison report generation (on by default) |
-
-</details>
+| `--incremental DIR` | Merge changes into existing .pbip |
 
 ---
 
