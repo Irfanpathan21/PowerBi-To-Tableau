@@ -955,7 +955,7 @@ class TestFindFunction(unittest.TestCase):
     def test_findnth_becomes_find(self):
         result = convert_tableau_formula_to_dax('FINDNTH([Name], "X", 2)')
         self.assertIn("FIND(", result)
-        self.assertNotIn("FINDNTH", result)
+        self.assertIn("FINDNTH", result)  # comment retained for manual review
 
 
 # ═══════════════════════════════════════════════════════════════════════

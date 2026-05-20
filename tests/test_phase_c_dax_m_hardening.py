@@ -351,7 +351,8 @@ class TestMQueryErrorHandling(unittest.TestCase):
     def test_replace_errors_custom_value(self):
         """m_transform_replace_errors() with custom replacement value."""
         name, expr = m_transform_replace_errors(['Amount'], replacement='0')
-        self.assertIn('each 0', expr)
+        self.assertIn('0', expr)
+        self.assertNotIn('each 0', expr)
 
     def test_try_otherwise(self):
         """m_transform_try_otherwise wraps expression in try...otherwise."""

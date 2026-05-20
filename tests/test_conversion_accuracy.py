@@ -231,8 +231,7 @@ class TestPdfConnectorDepth(unittest.TestCase):
 
     def test_pdf_start_and_end_page(self):
         m = _gen_m_pdf({'filename': 'r.pdf', 'start_page': 2, 'end_page': 5}, 'T', [])
-        self.assertIn('[StartPage=2]', m)
-        self.assertIn('[EndPage=5]', m)
+        self.assertIn('[StartPage=2, EndPage=5]', m)
 
     def test_pdf_table_index(self):
         m = _gen_m_pdf({'filename': 'r.pdf', 'table_index': 3}, 'T', [])

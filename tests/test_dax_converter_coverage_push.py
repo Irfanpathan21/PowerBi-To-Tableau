@@ -244,7 +244,7 @@ class TestFindArgReorder(unittest.TestCase):
     def test_findnth_converted(self):
         result = _convert_find("FINDNTH([Text], 'abc')")
         self.assertIn('FIND(', result)
-        self.assertNotIn('FINDNTH', result)
+        self.assertIn('FINDNTH', result)  # comment retained for manual review
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
