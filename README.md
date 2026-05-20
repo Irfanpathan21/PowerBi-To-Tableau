@@ -57,6 +57,7 @@ python migrate.py workbook.twbx --wizard                   # interactive guided 
 ```bash
 python migrate.py --batch folder/ --output-dir /tmp/out
 python migrate.py --global-assess --batch folder/          # cross-workbook merge analysis
+python migrate.py --bulk-assess folder/                    # full portfolio assessment (readiness + merge + prep lineage)
 ```
 
 #### ☁️ Tableau Server / Cloud
@@ -716,6 +717,7 @@ TableauToPowerBI/
 | `--goals` | Convert Tableau Pulse metrics to PBI Goals |
 | **Quality & Optimization** | |
 | `--assess` | Run pre-migration assessment and strategy analysis |
+| `--bulk-assess DIR` | Full portfolio assessment on a local folder (readiness + merge + prep lineage) |
 | `--qa` | Full QA suite: validate → auto-fix → governance → compare |
 | `--optimize-dax` | Run DAX optimizer (IF→SWITCH, COALESCE, constant folding) |
 | `--no-optimize-dax` | Disable DAX optimizer |

@@ -139,6 +139,7 @@ python migrate.py --shared-model wb1.twbx wb2.twbx --assess-merge
 python migrate.py --shared-model wb1.twbx wb2.twbx --force-merge
 python migrate.py --batch examples/tableau_samples/ --shared-model
 python migrate.py --global-assess --batch examples/tableau_samples/
+python migrate.py --bulk-assess examples/tableau_samples/
 python migrate.py --shared-model wb1.twbx wb2.twbx --deploy-bundle WORKSPACE_ID --bundle-refresh
 python migrate.py --deploy-bundle WORKSPACE_ID --output-dir artifacts/shared/MyModel
 python migrate.py --shared-model wb1.twbx wb2.twbx --multi-tenant tenants.json

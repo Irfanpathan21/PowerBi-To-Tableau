@@ -2749,8 +2749,10 @@ def _add_shared_model_args(parser):
         metavar='DIR',
         default=None,
         help=(
-            'Scan a folder of .twb/.twbx files and produce a portfolio-level '
-            'readiness report (HTML dashboard) without migrating'
+            'Scan a folder of .twb/.twbx/.tfl/.tflx files and produce a full '
+            'portfolio assessment: per-workbook readiness (GREEN/YELLOW/RED), '
+            'cross-workbook merge/duplication analysis, prep flow lineage, '
+            'effort estimation, and migration wave planning — all without migrating'
         )
     )
 
@@ -3591,6 +3593,248 @@ def run_prep_lineage_mode(args):
     return ExitCode.SUCCESS
 
 
+# ── Bulk Assessment mode ────────────────────────────────────────────────────
+
+def run_bulk_assessment_mode(args):
+    """Run full portfolio assessment on a local folder of workbooks and prep flows.
+
+    Combines:
+    1. Portfolio readiness (per-workbook GREEN/YELLOW/RED, effort, waves)
+    2. Cross-workbook merge/duplication analysis (pairwise scores, clusters)
+    3. Prep flow analysis (per-flow profiling + cross-flow lineage)
+
+    Produces an HTML dashboard and JSON report without migrating anything.
+
+    Returns:
+        ExitCode
+    """
+    import tempfile
+    import shutil
+
+    batch_dir = args.bulk_assess
+    if not os.path.isdir(batch_dir):
+        print(f"Error: Directory not found: {batch_dir}")
+        return ExitCode.GENERAL_ERROR
+
+    batch_dir = os.path.abspath(batch_dir)
+
+    # Discover workbooks and prep flows
+    workbook_files = []
+    prep_flow_files = []
+    for root, _dirs, files in os.walk(batch_dir):
+        for f in files:
+            lower = f.lower()
+            if f.startswith('~'):
+                continue
+            if lower.endswith(('.twb', '.twbx')):
+                workbook_files.append(os.path.join(root, f))
+            elif lower.endswith(('.tfl', '.tflx')):
+                prep_flow_files.append(os.path.join(root, f))
+    workbook_files.sort()
+    prep_flow_files.sort()
+
+    if not workbook_files and not prep_flow_files:
+        print(f"Error: No .twb/.twbx/.tfl/.tflx files found in {batch_dir}")
+        return ExitCode.GENERAL_ERROR
+
+    print_header("PORTFOLIO ASSESSMENT (LOCAL)")
+    print(f"  Source:       {batch_dir}")
+    print(f"  Workbooks:    {len(workbook_files)}")
+    print(f"  Prep flows:   {len(prep_flow_files)}")
+    print()
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'tableau_export'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'powerbi_import'))
+
+    all_converted = []
+    workbook_names = []
+    temp_dirs = []
+    prep_profiles = []
+
+    try:
+        from extract_tableau_data import TableauExtractor
+        from import_to_powerbi import PowerBIImporter
+        from powerbi_import.server_assessment import (
+            run_server_assessment,
+            print_server_summary,
+            generate_server_html_report,
+            save_server_assessment_json,
+        )
+
+        # ── Step 1: Extract each workbook ──────────────────────
+        if workbook_files:
+            total_wb = len(workbook_files)
+            print_step("1", 3 if prep_flow_files else 2, "EXTRACTING WORKBOOKS")
+            for i, wb_path in enumerate(workbook_files, 1):
+                basename = os.path.splitext(os.path.basename(wb_path))[0]
+                workbook_names.append(basename)
+                print(f"  [{i}/{total_wb}] {basename}...")
+
+                temp_dir = tempfile.mkdtemp(prefix=f'tableau_{basename}_')
+                temp_dirs.append(temp_dir)
+
+                try:
+                    extractor = TableauExtractor(wb_path, output_dir=temp_dir)
+                    success = extractor.extract_all()
+                except Exception as exc:
+                    logger.warning("Extraction failed for %s: %s", basename, exc)
+                    success = False
+
+                if not success:
+                    print(f"    ⚠ Extraction failed, skipping")
+                    all_converted.append(_empty_converted_objects())
+                    continue
+
+                importer = PowerBIImporter(source_dir=temp_dir)
+                converted = importer._load_converted_objects()
+                all_converted.append(converted)
+
+        # ── Step 2: Analyze prep flows ─────────────────────────
+        if prep_flow_files:
+            step_num = "2" if workbook_files else "1"
+            total_steps = 3 if workbook_files else 2
+            print_step(step_num, total_steps, "ANALYZING PREP FLOWS")
+            try:
+                from prep_flow_analyzer import analyze_flow
+            except ImportError:
+                try:
+                    from tableau_export.prep_flow_analyzer import analyze_flow
+                except ImportError:
+                    logger.warning("Cannot import prep_flow_analyzer")
+                    analyze_flow = None
+
+            if analyze_flow:
+                for i, flow_path in enumerate(prep_flow_files, 1):
+                    flow_name = os.path.splitext(os.path.basename(flow_path))[0]
+                    print(f"  [{i}/{len(prep_flow_files)}] {flow_name}...")
+                    try:
+                        profile = analyze_flow(flow_path, include_m_queries=True)
+                        prep_profiles.append(profile)
+                        grade = profile.assessment.get('grade', '?')
+                        print(f"    → {len(profile.inputs)} inputs, "
+                              f"{len(profile.outputs)} outputs, "
+                              f"{len(profile.transforms)} transforms [{grade}]")
+                    except (ValueError, OSError, KeyError) as exc:
+                        logger.warning("Failed to analyze %s: %s", flow_name, exc)
+                        print(f"    ⚠ Analysis failed: {exc}")
+
+        # ── Step 3: Run assessments ────────────────────────────
+        last_step = "3" if workbook_files and prep_flow_files else "2"
+        total_steps = 3 if workbook_files and prep_flow_files else 2
+        print_step(last_step, total_steps, "RUNNING ASSESSMENTS")
+
+        out = args.output_dir or os.path.join(
+            'artifacts', 'powerbi_projects', 'assessments'
+        )
+        os.makedirs(out, exist_ok=True)
+
+        # ── 3a: Portfolio readiness (per-workbook) ─────────────
+        server_result = None
+        if workbook_files and any(c.get('datasources') for c in all_converted):
+            print("\n  ▸ Portfolio readiness assessment...")
+            server_result = run_server_assessment(all_converted, workbook_names)
+            print_server_summary(server_result)
+
+            html_path = os.path.join(out, 'portfolio_assessment.html')
+            generate_server_html_report(server_result, output_path=html_path)
+            print(f"  HTML report: {html_path}")
+
+            json_path = os.path.join(out, 'portfolio_assessment.json')
+            save_server_assessment_json(server_result, output_path=json_path)
+            print(f"  JSON report: {json_path}")
+
+        # ── 3b: Cross-workbook merge/duplication analysis ──────
+        global_result = None
+        extracted_with_data = [c for c in all_converted if c.get('datasources')]
+        if len(extracted_with_data) >= 2:
+            print("\n  ▸ Cross-workbook merge & duplication analysis...")
+            try:
+                from powerbi_import.global_assessment import (
+                    run_global_assessment,
+                    print_global_summary,
+                    generate_global_html_report,
+                    save_global_assessment_json,
+                )
+                global_result = run_global_assessment(all_converted, workbook_names)
+                print_global_summary(global_result)
+
+                html_path = os.path.join(out, 'global_assessment.html')
+                generate_global_html_report(global_result, output_path=html_path)
+                print(f"  HTML report: {html_path}")
+
+                json_path = os.path.join(out, 'global_assessment.json')
+                save_global_assessment_json(global_result, output_path=json_path)
+                print(f"  JSON report: {json_path}")
+            except Exception as exc:
+                logger.warning("Global assessment failed: %s", exc, exc_info=True)
+                print(f"  ⚠ Merge analysis failed: {exc}")
+
+        # ── 3c: Prep flow lineage ──────────────────────────────
+        if len(prep_profiles) >= 2:
+            print("\n  ▸ Cross-flow lineage analysis...")
+            try:
+                try:
+                    from powerbi_import.prep_lineage import build_lineage_graph
+                    from powerbi_import.prep_lineage_report import (
+                        compute_merge_recommendations,
+                        generate_prep_lineage_report,
+                        save_lineage_json,
+                    )
+                except ImportError:
+                    from prep_lineage import build_lineage_graph
+                    from prep_lineage_report import (
+                        compute_merge_recommendations,
+                        generate_prep_lineage_report,
+                        save_lineage_json,
+                    )
+
+                graph = build_lineage_graph(prep_profiles)
+                recommendations = compute_merge_recommendations(graph, prep_profiles)
+
+                lineage_dir = os.path.join(out, 'prep_lineage')
+                os.makedirs(lineage_dir, exist_ok=True)
+
+                html_path = os.path.join(lineage_dir, 'prep_lineage_report.html')
+                generate_prep_lineage_report(graph, recommendations, html_path)
+                print(f"  HTML report: {html_path}")
+
+                json_path = os.path.join(lineage_dir, 'prep_lineage.json')
+                save_lineage_json(graph, recommendations, json_path)
+                print(f"  JSON report: {json_path}")
+            except Exception as exc:
+                logger.warning("Prep lineage analysis failed: %s", exc, exc_info=True)
+                print(f"  ⚠ Prep lineage analysis failed: {exc}")
+
+        # ── Summary ────────────────────────────────────────────
+        print_header("BULK ASSESSMENT COMPLETE")
+        if server_result:
+            print(f"  Workbooks:     {server_result.total_workbooks}")
+            print(f"  GREEN:         {server_result.green_count}")
+            print(f"  YELLOW:        {server_result.yellow_count}")
+            print(f"  RED:           {server_result.red_count}")
+            print(f"  Readiness:     {server_result.readiness_pct}%")
+            print(f"  Est. effort:   {server_result.total_effort_hours:.1f} hours")
+        if prep_profiles:
+            print(f"  Prep flows:    {len(prep_profiles)} analyzed")
+        if global_result:
+            print(f"  Merge clusters: {len(global_result.merge_clusters)}")
+        print(f"  Output:        {out}")
+
+        return ExitCode.SUCCESS
+
+    except Exception as e:
+        logger.error("Bulk assessment failed: %s", e, exc_info=True)
+        print(f"\nError: {e}")
+        return ExitCode.GENERAL_ERROR
+
+    finally:
+        for td in temp_dirs:
+            try:
+                shutil.rmtree(td, ignore_errors=True)
+            except OSError as exc:
+                logger.debug('Temp dir cleanup failed: %s', exc)
+
+
 # ── Global Assessment mode ──────────────────────────────────────────────────
 
 def run_global_assessment_mode(args):
@@ -4166,6 +4410,10 @@ def main():
     # ── Prep Lineage mode ──────────────────────────────────────
     if getattr(args, 'prep_lineage', None) is not None:
         return run_prep_lineage_mode(args)
+
+    # ── Bulk Assessment mode (local folder) ────────────────────
+    if getattr(args, 'bulk_assess', None):
+        return run_bulk_assessment_mode(args)
 
     # ── Global Assessment mode ─────────────────────────────────
     if getattr(args, 'global_assess', None) is not None:
