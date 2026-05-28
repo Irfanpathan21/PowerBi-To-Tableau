@@ -60,10 +60,25 @@ class LightMigrationUI:
         self._compact_mode = False
         self._task_buttons: dict[str, tk.Button] = {}
         self.section_frames: dict[str, tk.Widget] = {}
-        self._nav_buttons: dict[str, tk.Button] = {}
-        self._active_section = "setup"
         self._status_pulse_job: str | None = None
         self._status_pulse_on = False
+        self.ui = {
+            "page_bg": "#e9eef8",
+            "hero_bg": "#0b1f3a",
+            "hero_fg": "#ecf4ff",
+            "hero_sub": "#b6d1ff",
+            "surface": "#ffffff",
+            "surface_alt": "#f7faff",
+            "border": "#c9d6ea",
+            "muted": "#5c6b82",
+            "text": "#13233a",
+            "primary": "#0f4c81",
+            "primary_hover": "#1a5e97",
+            "chip_bg": "#e9f0fb",
+            "chip_hover": "#dbe6f7",
+            "log_bg": "#0f172a",
+            "log_fg": "#dbeafe",
+        }
 
         self._process: subprocess.Popen[str] | None = None
         self._log_queue: queue.Queue[str] = queue.Queue()
@@ -86,11 +101,11 @@ class LightMigrationUI:
             pass
         style.configure(
             "Shiny.Horizontal.TProgressbar",
-            troughcolor="#dbe8f7",
-            background="#0f4c81",
-            bordercolor="#dbe8f7",
-            lightcolor="#2a6ea9",
-            darkcolor="#0f4c81",
+            troughcolor="#dbe4f4",
+            background=self.ui["primary"],
+            bordercolor="#dbe4f4",
+            lightcolor="#2f78ba",
+            darkcolor=self.ui["primary"],
             thickness=12,
         )
 
@@ -130,98 +145,76 @@ class LightMigrationUI:
         self.root.iconphoto(True, self._app_icon)
 
     def _build_ui(self) -> None:
-        self.root.configure(bg="#f3f6fb")
+        self.root.configure(bg=self.ui["page_bg"])
 
-        top = tk.Frame(self.root, padx=12, pady=12, bg="#f3f6fb")
+        top = tk.Frame(self.root, padx=12, pady=12, bg=self.ui["page_bg"])
         top.pack(fill=tk.X)
 
-        hero = tk.Frame(top, bg="#0f4c81", padx=18, pady=16, bd=0, highlightthickness=0)
+        hero = tk.Frame(top, bg=self.ui["hero_bg"], padx=20, pady=18, bd=0, highlightthickness=0)
         hero.pack(fill=tk.X)
         self.hero_title_label = tk.Label(
             hero,
             text="Tableau to Power BI Migration",
-            font=("Segoe UI", 18, "bold"),
+            font=("Segoe UI", 20, "bold"),
             anchor="w",
-            bg="#0f4c81",
-            fg="white",
+            bg=self.ui["hero_bg"],
+            fg=self.ui["hero_fg"],
         )
         self.hero_title_label.pack(fill=tk.X)
         self.hero_subtitle_label = tk.Label(
             hero,
             text="Pick a batch folder, choose where the result should go, then run the migration.",
-            font=("Segoe UI", 10),
-            fg="#dcecff",
+            font=("Segoe UI", 10, "bold"),
+            fg=self.ui["hero_sub"],
             anchor="w",
-            bg="#0f4c81",
+            bg=self.ui["hero_bg"],
         )
         self.hero_subtitle_label.pack(fill=tk.X, pady=(4, 8))
 
-        quick_row = tk.Frame(hero, bg="#0f4c81")
+        quick_row = tk.Frame(hero, bg=self.ui["hero_bg"])
         quick_row.pack(fill=tk.X)
         self.quick_row = quick_row
         tk.Label(
             quick_row,
             text="1) Select batch folder   2) Select output   3) Click Run migration",
-            fg="#ffffff",
-            font=("Segoe UI", 10, "bold"),
+            fg=self.ui["hero_fg"],
+            font=("Segoe UI", 11, "bold"),
             anchor="w",
-            bg="#0f4c81",
+            bg=self.ui["hero_bg"],
         ).pack(side=tk.LEFT)
         tk.Checkbutton(
             quick_row,
             text="Auto-open HTML report",
             variable=self.auto_open_report_var,
-            bg="#0f4c81",
-            fg="white",
-            activebackground="#0f4c81",
-            activeforeground="white",
-            selectcolor="#0f4c81",
+            bg=self.ui["hero_bg"],
+            fg=self.ui["hero_fg"],
+            activebackground=self.ui["hero_bg"],
+            activeforeground=self.ui["hero_fg"],
+            selectcolor=self.ui["hero_bg"],
         ).pack(side=tk.RIGHT)
-        tk.Frame(hero, bg="#2d7cbc", height=2).pack(fill=tk.X, pady=(10, 0))
+        tk.Frame(hero, bg="#2f78ba", height=2).pack(fill=tk.X, pady=(10, 0))
+        tk.Frame(hero, bg="#1c3f6b", height=1).pack(fill=tk.X)
 
-        content = tk.Frame(self.root, padx=12, pady=10, bg="#f3f6fb")
+        content = tk.Frame(self.root, padx=12, pady=10, bg=self.ui["page_bg"])
         content.pack(fill=tk.BOTH, expand=True)
 
-        nav_rail = tk.Frame(content, bg="#e6eef8", padx=8, pady=10, bd=1, relief="solid", highlightthickness=0)
-        nav_rail.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
-        tk.Label(nav_rail, text="Navigate", bg="#e6eef8", fg="#1f3f66", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 8))
-        for label in ("Setup", "Run", "Results", "Logs"):
-            key = label.lower()
-            btn = tk.Button(
-                nav_rail,
-                text=label,
-                width=10,
-                command=lambda s=key: self._jump_to_section(s),
-                relief="flat",
-                bd=0,
-                bg="#edf2f7",
-                activebackground="#dbe6f3",
-                font=("Segoe UI", 9, "bold"),
-            )
-            btn.pack(fill=tk.X, pady=3)
-            self._nav_buttons[key] = btn
-            self._bind_hover(
-                btn,
-                "#edf2f7",
-                "#dbe6f3",
-                on_leave=lambda: self._set_active_section(self._active_section),
-            )
+        work_area = tk.Frame(content, bg=self.ui["page_bg"])
+        work_area.pack(fill=tk.BOTH, expand=True)
 
-        work_area = tk.Frame(content, bg="#f3f6fb")
-        work_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        setup_card = tk.LabelFrame(work_area, text="Migration Setup", padx=12, pady=10, bd=1, relief="solid", bg="#ffffff")
+        setup_card = tk.Frame(work_area, padx=12, pady=10, bd=1, relief="solid", bg=self.ui["surface"], highlightthickness=1, highlightbackground=self.ui["border"])
         setup_card.pack(fill=tk.X)
         self.section_frames["setup"] = setup_card
+        tk.Label(setup_card, text="Migration Setup", font=("Segoe UI", 11, "bold"), fg=self.ui["text"], bg=self.ui["surface"], anchor="w").pack(fill=tk.X)
+        tk.Frame(setup_card, bg="#d9e6f8", height=1).pack(fill=tk.X, pady=(6, 8))
 
-        mode_row = tk.Frame(setup_card, bg="#ffffff")
+        mode_row = tk.Frame(setup_card, bg=self.ui["surface"])
         mode_row.pack(fill=tk.X, pady=4)
-        tk.Label(mode_row, text="Mode", width=14, anchor="w", bg="#ffffff").pack(side=tk.LEFT)
-        tk.Label(mode_row, text="Batch folder only", fg="#0f4c81", bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
+        tk.Label(mode_row, text="Mode", width=14, anchor="w", bg=self.ui["surface"], fg=self.ui["muted"]).pack(side=tk.LEFT)
+        tk.Label(mode_row, text="Batch folder only", fg=self.ui["primary"], bg=self.ui["surface"], font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
 
-        task_chip_row = tk.Frame(setup_card, bg="#ffffff")
+        task_chip_row = tk.Frame(setup_card, bg=self.ui["surface"])
         task_chip_row.pack(fill=tk.X, pady=(2, 6))
-        tk.Label(task_chip_row, text="Task", width=14, anchor="w", fg="#4b5563", bg="#ffffff").pack(side=tk.LEFT)
+        tk.Label(task_chip_row, text="Task", width=14, anchor="w", fg=self.ui["muted"], bg=self.ui["surface"]).pack(side=tk.LEFT)
         for task in ("Assess", "Migrate", "Lineage"):
             btn = tk.Button(
                 task_chip_row,
@@ -231,62 +224,62 @@ class LightMigrationUI:
                 bd=0,
                 padx=10,
                 pady=4,
-                bg="#edf2f7",
-                activebackground="#dbe6f3",
+                bg=self.ui["chip_bg"],
+                activebackground=self.ui["chip_hover"],
                 font=("Segoe UI", 9, "bold"),
             )
             btn.pack(side=tk.LEFT, padx=(0, 6))
             self._task_buttons[task] = btn
-            self._bind_hover(btn, "#edf2f7", "#dbe6f3", on_leave=self._refresh_task_chip_states)
+            self._bind_hover(btn, self.ui["chip_bg"], self.ui["chip_hover"], on_leave=self._refresh_task_chip_states)
 
         self.workflow_hint = tk.Label(
             setup_card,
             text="Batch workflow only. Pick one task: Assess, Migrate, or Lineage.",
-            fg="#4b5563",
-            bg="#ffffff",
+            fg=self.ui["muted"],
+            bg=self.ui["surface"],
             anchor="w",
             justify="left",
         )
         self.workflow_hint.pack(fill=tk.X, pady=(0, 6))
 
-        src_row = tk.Frame(setup_card, bg="#ffffff")
+        src_row = tk.Frame(setup_card, bg=self.ui["surface"])
         src_row.pack(fill=tk.X, pady=4)
-        tk.Label(src_row, text="Source", width=14, anchor="w", bg="#ffffff").pack(side=tk.LEFT)
+        tk.Label(src_row, text="Source", width=14, anchor="w", bg=self.ui["surface"], fg=self.ui["muted"]).pack(side=tk.LEFT)
         tk.Entry(src_row, textvariable=self.source_var, relief="solid", bd=1).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
-        self.source_browse_btn = tk.Button(src_row, text="Browse", command=self._browse_source, width=10, relief="flat", bd=0, bg="#edf2f7", activebackground="#dbe6f3")
+        self.source_browse_btn = tk.Button(src_row, text="Browse", command=self._browse_source, width=10, relief="flat", bd=0, bg=self.ui["chip_bg"], activebackground=self.ui["chip_hover"])
         self.source_browse_btn.pack(side=tk.LEFT)
-        self._bind_hover(self.source_browse_btn, "#edf2f7", "#dbe6f3")
+        self._bind_hover(self.source_browse_btn, self.ui["chip_bg"], self.ui["chip_hover"])
 
-        out_row = tk.Frame(setup_card, bg="#ffffff")
+        out_row = tk.Frame(setup_card, bg=self.ui["surface"])
         out_row.pack(fill=tk.X, pady=4)
-        tk.Label(out_row, text="Output folder", width=14, anchor="w", bg="#ffffff").pack(side=tk.LEFT)
+        tk.Label(out_row, text="Output folder", width=14, anchor="w", bg=self.ui["surface"], fg=self.ui["muted"]).pack(side=tk.LEFT)
         tk.Entry(out_row, textvariable=self.output_var, relief="solid", bd=1).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
-        self.output_browse_btn = tk.Button(out_row, text="Browse", command=self._browse_output, width=10, relief="flat", bd=0, bg="#edf2f7", activebackground="#dbe6f3")
+        self.output_browse_btn = tk.Button(out_row, text="Browse", command=self._browse_output, width=10, relief="flat", bd=0, bg=self.ui["chip_bg"], activebackground=self.ui["chip_hover"])
         self.output_browse_btn.pack(side=tk.LEFT)
-        self._bind_hover(self.output_browse_btn, "#edf2f7", "#dbe6f3")
+        self._bind_hover(self.output_browse_btn, self.ui["chip_bg"], self.ui["chip_hover"])
 
-        opts_row = tk.Frame(setup_card, bg="#ffffff")
+        opts_row = tk.Frame(setup_card, bg=self.ui["surface"])
         opts_row.pack(fill=tk.X, pady=4)
-        tk.Label(opts_row, text="Options", width=14, anchor="w", bg="#ffffff").pack(side=tk.LEFT)
-        tk.Checkbutton(opts_row, text="Verbose output", variable=self.verbose_var, bg="#ffffff", activebackground="#ffffff").pack(side=tk.LEFT)
-        tk.Checkbutton(opts_row, text="Notify when done", variable=self.notify_var, bg="#ffffff", activebackground="#ffffff").pack(side=tk.LEFT, padx=(10, 0))
-        self.compact_state_label = tk.Label(opts_row, text="Compact: OFF", fg="#4b5563", bg="#ffffff")
+        tk.Label(opts_row, text="Options", width=14, anchor="w", bg=self.ui["surface"], fg=self.ui["muted"]).pack(side=tk.LEFT)
+        tk.Checkbutton(opts_row, text="Verbose output", variable=self.verbose_var, bg=self.ui["surface"], activebackground=self.ui["surface"]).pack(side=tk.LEFT)
+        tk.Checkbutton(opts_row, text="Notify when done", variable=self.notify_var, bg=self.ui["surface"], activebackground=self.ui["surface"]).pack(side=tk.LEFT, padx=(10, 0))
+        self.compact_state_label = tk.Label(opts_row, text="Compact: OFF", fg=self.ui["muted"], bg=self.ui["surface"])
         self.compact_state_label.pack(side=tk.RIGHT, padx=(8, 0))
-        self.compact_btn = tk.Button(opts_row, text="Compact Mode", width=14, command=self._toggle_compact_mode, relief="flat", bd=0, bg="#edf2f7", activebackground="#dbe6f3")
+        self.compact_btn = tk.Button(opts_row, text="Compact Mode", width=14, command=self._toggle_compact_mode, relief="flat", bd=0, bg=self.ui["chip_bg"], activebackground=self.ui["chip_hover"])
         self.compact_btn.pack(side=tk.RIGHT, padx=(8, 0))
-        self.kpi_only_btn = tk.Button(opts_row, text="KPI Only View", width=14, command=self._toggle_kpi_only, relief="flat", bd=0, bg="#edf2f7", activebackground="#dbe6f3")
+        self.kpi_only_btn = tk.Button(opts_row, text="KPI Only View", width=14, command=self._toggle_kpi_only, relief="flat", bd=0, bg=self.ui["chip_bg"], activebackground=self.ui["chip_hover"])
         self.kpi_only_btn.pack(side=tk.RIGHT)
-        self._bind_hover(self.compact_btn, "#edf2f7", "#dbe6f3")
-        self._bind_hover(self.kpi_only_btn, "#edf2f7", "#dbe6f3")
+        self._bind_hover(self.compact_btn, self.ui["chip_bg"], self.ui["chip_hover"])
+        self._bind_hover(self.kpi_only_btn, self.ui["chip_bg"], self.ui["chip_hover"])
 
-        mode_opts_row = tk.Frame(setup_card, bg="#ffffff")
+        mode_opts_row = tk.Frame(setup_card, bg=self.ui["surface"])
         self.assess_cb = tk.Checkbutton(
             mode_opts_row,
             text="Assessment only (--assess)",
             variable=self.assess_only_var,
             command=self._on_assess_toggle,
-            bg="#ffffff",
-            activebackground="#ffffff",
+            bg=self.ui["surface"],
+            activebackground=self.ui["surface"],
         )
         self.assess_cb.pack(side=tk.LEFT)
         self.global_assess_cb = tk.Checkbutton(
@@ -294,8 +287,8 @@ class LightMigrationUI:
             text="Global assess (--global-assess)",
             variable=self.global_assess_var,
             command=self._on_global_assess_toggle,
-            bg="#ffffff",
-            activebackground="#ffffff",
+            bg=self.ui["surface"],
+            activebackground=self.ui["surface"],
         )
         self.global_assess_cb.pack(side=tk.LEFT, padx=(10, 0))
         self.prep_lineage_cb = tk.Checkbutton(
@@ -303,34 +296,36 @@ class LightMigrationUI:
             text="Prep lineage only (--prep-lineage)",
             variable=self.prep_lineage_only_var,
             command=self._on_prep_lineage_toggle,
-            bg="#ffffff",
-            activebackground="#ffffff",
+            bg=self.ui["surface"],
+            activebackground=self.ui["surface"],
         )
         self.prep_lineage_cb.pack(side=tk.LEFT, padx=(10, 0))
         self.mode_opts_row = mode_opts_row
 
-        actions_card = tk.LabelFrame(work_area, text="Run", padx=12, pady=10, bd=1, relief="solid", bg="#ffffff")
+        actions_card = tk.Frame(work_area, padx=12, pady=10, bd=1, relief="solid", bg=self.ui["surface"], highlightthickness=1, highlightbackground=self.ui["border"])
         actions_card.pack(fill=tk.X, pady=(10, 0))
         self.section_frames["run"] = actions_card
-        actions = tk.Frame(actions_card, bg="#ffffff")
+        tk.Label(actions_card, text="Run", font=("Segoe UI", 11, "bold"), fg=self.ui["text"], bg=self.ui["surface"], anchor="w").pack(fill=tk.X)
+        tk.Frame(actions_card, bg="#d9e6f8", height=1).pack(fill=tk.X, pady=(6, 8))
+        actions = tk.Frame(actions_card, bg=self.ui["surface"])
         actions.pack(fill=tk.X)
         self.run_btn = tk.Button(
             actions,
             text="Run migration",
             width=16,
             command=self._start_run,
-            bg="#0f4c81",
+            bg=self.ui["primary"],
             fg="white",
-            activebackground="#1a5e97",
+            activebackground=self.ui["primary_hover"],
             activeforeground="white",
             relief="flat",
             bd=0,
-            padx=10,
-            pady=6,
+            padx=12,
+            pady=7,
             font=("Segoe UI", 10, "bold"),
         )
         self.run_btn.pack(side=tk.LEFT)
-        self._bind_hover(self.run_btn, "#0f4c81", "#1a5e97", normal_fg="white", hover_fg="white")
+        self._bind_hover(self.run_btn, self.ui["primary"], self.ui["primary_hover"], normal_fg="white", hover_fg="white")
         self.stop_btn = tk.Button(
             actions,
             text="Stop",
@@ -359,9 +354,9 @@ class LightMigrationUI:
             font=("Segoe UI", 9, "bold"),
         )
         self.status_label.pack(side=tk.LEFT, padx=(12, 0))
-        results_actions = tk.Frame(actions_card, bg="#ffffff")
+        results_actions = tk.Frame(actions_card, bg=self.ui["surface"])
         results_actions.pack(fill=tk.X, pady=(10, 0))
-        tk.Label(results_actions, text="Results", fg="#0f4c81", bg="#ffffff", font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
+        tk.Label(results_actions, text="Results", fg=self.ui["primary"], bg=self.ui["surface"], font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
         self.open_summary_btn = tk.Button(results_actions, text="Summary CSV", width=13,
                           command=self._open_summary_csv, state=tk.DISABLED)
         self.open_summary_btn.pack(side=tk.RIGHT, padx=(0, 8))
@@ -376,18 +371,18 @@ class LightMigrationUI:
         self.open_output_btn.pack(side=tk.RIGHT, padx=(0, 8))
 
         for btn in (self.open_output_btn, self.open_dashboard_btn, self.open_comparison_btn, self.open_summary_btn):
-            btn.configure(relief="flat", bd=0, bg="#edf2f7", activebackground="#e2e8f0", padx=8, pady=4)
-            self._bind_hover(btn, "#edf2f7", "#dbe6f3")
+            btn.configure(relief="flat", bd=0, bg=self.ui["chip_bg"], activebackground=self.ui["chip_hover"], padx=8, pady=4)
+            self._bind_hover(btn, self.ui["chip_bg"], self.ui["chip_hover"])
         self.section_frames["results"] = results_actions
 
-        kpi_panel = tk.Frame(self.root, padx=12, pady=8, bg="#f3f6fb")
+        kpi_panel = tk.Frame(self.root, padx=12, pady=8, bg=self.ui["page_bg"])
         kpi_panel.pack(fill=tk.X)
 
         def _kpi_card(parent: tk.Frame, title: str) -> tk.Label:
-            card = tk.Frame(parent, bg="white", bd=1, relief="solid", padx=10, pady=6, highlightthickness=1, highlightbackground="#dbe6f3")
+            card = tk.Frame(parent, bg=self.ui["surface"], bd=1, relief="solid", padx=10, pady=6, highlightthickness=1, highlightbackground=self.ui["border"])
             tk.Frame(card, bg="#2a6ea9", height=2).pack(fill=tk.X, pady=(0, 6))
-            tk.Label(card, text=title, bg="white", fg="#4b5563", font=("Segoe UI", 9)).pack(anchor="w")
-            value_label = tk.Label(card, text="-", bg="white", fg="#0f4c81", font=("Segoe UI", 12, "bold"))
+            tk.Label(card, text=title, bg=self.ui["surface"], fg=self.ui["muted"], font=("Segoe UI", 9)).pack(anchor="w")
+            value_label = tk.Label(card, text="-", bg=self.ui["surface"], fg=self.ui["primary"], font=("Segoe UI", 12, "bold"))
             value_label.pack(anchor="w", pady=(2, 0))
             card.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
             return value_label
@@ -397,7 +392,7 @@ class LightMigrationUI:
         self.kpi_values_value = _kpi_card(kpi_panel, "Visuals with values")
         self.kpi_fidelity_value = _kpi_card(kpi_panel, "Fidelity")
 
-        progress_row = tk.Frame(self.root, padx=12, pady=6, bg="#f3f6fb")
+        progress_row = tk.Frame(self.root, padx=12, pady=6, bg=self.ui["page_bg"])
         progress_row.pack(fill=tk.X)
         self.progress = ttk.Progressbar(
             progress_row,
@@ -408,59 +403,72 @@ class LightMigrationUI:
             style="Shiny.Horizontal.TProgressbar",
         )
         self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.progress_text = tk.Label(progress_row, text="0%", width=8, anchor="e", bg="#f3f6fb", fg="#1f3f66", font=("Segoe UI", 9, "bold"))
+        self.progress_text = tk.Label(progress_row, text="0%", width=8, anchor="e", bg=self.ui["page_bg"], fg=self.ui["text"], font=("Segoe UI", 9, "bold"))
         self.progress_text.pack(side=tk.LEFT, padx=(10, 0))
 
-        status_row = tk.Frame(self.root, padx=12, pady=6, bg="#f3f6fb")
+        status_row = tk.Frame(self.root, padx=12, pady=6, bg=self.ui["page_bg"])
         status_row.pack(fill=tk.X)
-        self.stage_label = tk.Label(status_row, text="Stage: idle", anchor="w", fg="#334", bg="#f3f6fb")
+        self.stage_label = tk.Label(status_row, text="Stage: idle", anchor="w", fg=self.ui["text"], bg=self.ui["page_bg"])
         self.stage_label.pack(side=tk.LEFT)
-        self.elapsed_label = tk.Label(status_row, text="Elapsed: 00:00", anchor="w", fg="#334", bg="#f3f6fb")
+        self.elapsed_label = tk.Label(status_row, text="Elapsed: 00:00", anchor="w", fg=self.ui["text"], bg=self.ui["page_bg"])
         self.elapsed_label.pack(side=tk.LEFT, padx=(20, 0))
-        self.summary_label = tk.Label(status_row, text="", anchor="w", fg="#225", bg="#f3f6fb")
+        self.summary_label = tk.Label(status_row, text="", anchor="w", fg="#274672", bg=self.ui["page_bg"])
         self.summary_label.pack(side=tk.LEFT, padx=(20, 0))
 
-        info_row = tk.Frame(self.root, padx=12, pady=2, bg="#f3f6fb")
+        info_row = tk.Frame(self.root, padx=12, pady=2, bg=self.ui["page_bg"])
         info_row.pack(fill=tk.X)
         self.info_row = info_row
         self.dax_hint_label = tk.Label(
             info_row,
             text="Main KPI shows visuals with values. Explicit DAX visuals are tracked separately in the summary details.",
             anchor="w",
-            fg="#4b5563",
-            bg="#f3f6fb",
+            fg=self.ui["muted"],
+            bg=self.ui["page_bg"],
             justify="left",
             wraplength=920,
         )
         self.dax_hint_label.pack(fill=tk.X)
 
-        health_row = tk.Frame(self.root, padx=12, pady=0, bg="#f3f6fb")
+        health_row = tk.Frame(self.root, padx=12, pady=0, bg=self.ui["page_bg"])
         health_row.pack(fill=tk.X)
         self.health_row = health_row
-        self.health_label = tk.Label(health_row, text="", anchor="w", fg="#1d4ed8", bg="#f3f6fb")
+        self.health_label = tk.Label(health_row, text="", anchor="w", fg="#1d4ed8", bg=self.ui["page_bg"])
         self.health_label.pack(fill=tk.X)
 
-        logs_frame = tk.Frame(self.root, padx=12, pady=12, bg="#f3f6fb")
+        logs_frame = tk.Frame(self.root, padx=12, pady=12, bg=self.ui["page_bg"])
         logs_frame.pack(fill=tk.BOTH, expand=True)
-        logs_header = tk.Frame(logs_frame, bg="#f3f6fb")
+        log_card = tk.Frame(logs_frame, bg=self.ui["log_bg"], bd=1, relief="solid", highlightthickness=1, highlightbackground="#2f3b52")
+        log_card.pack(fill=tk.BOTH, expand=True)
+        logs_header = tk.Frame(log_card, bg=self.ui["log_bg"])
         logs_header.pack(fill=tk.X)
-        tk.Label(logs_header, text="Logs", anchor="w", bg="#f3f6fb", font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
+        tk.Label(logs_header, text="Logs", anchor="w", bg=self.ui["log_bg"], fg="#a7c4ff", font=("Consolas", 10, "bold")).pack(side=tk.LEFT, padx=(8, 0), pady=6)
         self.clear_logs_btn = tk.Button(
             logs_header,
             text="Clear",
             command=self._clear_logs,
             relief="flat",
             bd=0,
-            bg="#edf2f7",
-            activebackground="#e2e8f0",
+            bg="#253149",
+            fg="#c8dcff",
+            activebackground="#314568",
+            activeforeground="#e3efff",
             padx=8,
             pady=3,
         )
-        self.clear_logs_btn.pack(side=tk.RIGHT)
-        self._bind_hover(self.clear_logs_btn, "#edf2f7", "#dbe6f3")
-        self.log_box = scrolledtext.ScrolledText(logs_frame, wrap=tk.WORD, height=24)
+        self.clear_logs_btn.pack(side=tk.RIGHT, padx=(0, 8), pady=6)
+        self._bind_hover(self.clear_logs_btn, "#253149", "#314568", normal_fg="#c8dcff", hover_fg="#e3efff")
+        self.log_box = scrolledtext.ScrolledText(log_card, wrap=tk.WORD, height=24)
         self.log_box.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-        self.log_box.configure(state=tk.DISABLED)
+        self.log_box.configure(
+            state=tk.DISABLED,
+            bg=self.ui["log_bg"],
+            fg=self.ui["log_fg"],
+            insertbackground="#e5eeff",
+            selectbackground="#304a73",
+            relief="flat",
+            borderwidth=0,
+            font=("Consolas", 10),
+        )
         self.logs_frame = logs_frame
         self.section_frames["logs"] = logs_frame
 
@@ -475,34 +483,10 @@ class LightMigrationUI:
         self.mode_var.trace_add("write", lambda *_: self._update_option_states())
         self._update_option_states()
         self._apply_preset()
-        self._set_active_section("setup")
 
     def _set_task(self, task: str) -> None:
         self.preset_var.set(task)
         self._apply_preset()
-
-    def _jump_to_section(self, section: str) -> None:
-        target = self.section_frames.get(section)
-        if not target:
-            return
-        if section == "logs" and self._kpi_only:
-            self._toggle_kpi_only()
-        self._set_active_section(section)
-        self._flash_section(target)
-        try:
-            target.focus_set()
-        except tk.TclError:
-            pass
-
-    def _set_active_section(self, section: str) -> None:
-        if section not in self._nav_buttons:
-            return
-        self._active_section = section
-        for key, btn in self._nav_buttons.items():
-            if key == section:
-                btn.configure(bg="#0f4c81", fg="white", activebackground="#1a5e97", activeforeground="white")
-            else:
-                btn.configure(bg="#edf2f7", fg="#1f3f66", activebackground="#dbe6f3", activeforeground="#1f3f66")
 
     def _flash_section(self, widget: tk.Widget) -> None:
         try:
@@ -795,7 +779,6 @@ class LightMigrationUI:
         self.summary_label.configure(text="")
         self.health_label.configure(text="")
         self.stage_label.configure(text="Stage: starting")
-        self._set_active_section("run")
         self.elapsed_label.configure(text="Elapsed: 00:00")
         self._set_progress(0.0, label="Running...")
         self.run_btn.configure(state=tk.DISABLED)
@@ -865,7 +848,6 @@ class LightMigrationUI:
             self._set_progress(100.0)
             self._set_status("Completed", tone="success")
             self.stage_label.configure(text="Stage: completed")
-            self._set_active_section("results")
             if self._last_output_dir:
                 self.open_output_btn.configure(state=tk.NORMAL)
             if self._last_dashboard and os.path.exists(self._last_dashboard):
@@ -889,7 +871,6 @@ class LightMigrationUI:
                 self._set_progress(0.0)
             self._set_status("Failed", tone="error")
             self.stage_label.configure(text="Stage: failed")
-            self._set_active_section("logs")
             hint = self._build_error_hint()
             self.health_label.configure(text="")
             msg = "Migration ended with errors. Check logs."
