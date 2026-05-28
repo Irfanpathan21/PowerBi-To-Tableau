@@ -101,6 +101,7 @@ class LightMigrationUI:
         hover_bg: str,
         normal_fg: str = "#1f3f66",
         hover_fg: str | None = None,
+        on_leave: callable | None = None,
     ) -> None:
         hover_fg = hover_fg or normal_fg
 
@@ -108,7 +109,10 @@ class LightMigrationUI:
             btn.configure(bg=hover_bg, fg=hover_fg)
 
         def _on_leave(_event: tk.Event) -> None:
-            btn.configure(bg=normal_bg, fg=normal_fg)
+            if on_leave is not None:
+                on_leave()
+            else:
+                btn.configure(bg=normal_bg, fg=normal_fg)
 
         btn.bind("<Enter>", _on_enter)
         btn.bind("<Leave>", _on_leave)
@@ -196,7 +200,12 @@ class LightMigrationUI:
             )
             btn.pack(fill=tk.X, pady=3)
             self._nav_buttons[key] = btn
-            self._bind_hover(btn, "#edf2f7", "#dbe6f3")
+            self._bind_hover(
+                btn,
+                "#edf2f7",
+                "#dbe6f3",
+                on_leave=lambda: self._set_active_section(self._active_section),
+            )
 
         work_area = tk.Frame(content, bg="#f3f6fb")
         work_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -245,7 +254,7 @@ class LightMigrationUI:
             )
             btn.pack(side=tk.LEFT, padx=(0, 6))
             self._task_buttons[task] = btn
-            self._bind_hover(btn, "#edf2f7", "#dbe6f3")
+            self._bind_hover(btn, "#edf2f7", "#dbe6f3", on_leave=self._refresh_task_chip_states)
 
         self.workflow_hint = tk.Label(
             setup_card,
