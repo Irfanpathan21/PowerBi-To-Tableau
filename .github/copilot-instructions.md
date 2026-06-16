@@ -466,9 +466,9 @@ All schema URLs and theme identifiers are defined as constants in `pbip_generato
 - Compare Tableau visuals vs Power BI
 - Refer to `docs/FAQ.md` for frequently asked questions
 
-## Agent Architecture — 14-Agent Specialization Model
+## Agent Architecture — 15-Agent Specialization Model
 
-This project uses a **14-agent specialization model** with scoped domain knowledge and file ownership. Four specialist agents (@dax, @wiring, @semantic, @visual) provide deep expertise, @converter and @generator remain as coordination layers, and @tableau handles Tableau Server/Cloud interaction.
+This project uses a **15-agent specialization model** with scoped domain knowledge and file ownership. Four specialist agents (@dax, @wiring, @semantic, @visual) provide deep expertise, @converter and @generator remain as coordination layers, @tableau handles Tableau Server/Cloud interaction, and @web-designer owns the end-user UI surfaces.
 
 See `docs/AGENTS.md` for the full architecture diagram, data flow, and handoff protocol.
 
@@ -489,7 +489,8 @@ See `docs/AGENTS.md` for the full architecture diagram, data flow, and handoff p
 | **@merger** | Shared semantic model, fingerprint matching | `shared_model.py`, `merge_config.py` |
 | **@deployer** | Fabric/PBI deployment, auth, gateway | `deploy/*.py`, `gateway_config.py`, `telemetry.py` |
 | **@reviewer** | Artifact quality review, preceptorship loop, coaching feedback | `preceptor.py` |
-| **@tester** | Tests (8,746 latest full run), coverage, regression | `tests/*.py` |
+| **@web-designer** | End-user UI/UX, Tkinter light UI, layout/presentation | `web/light_ui.py`, `docs/LIGHT_UI_ROADMAP.md` |
+| **@tester** | Tests (8,874 latest collection), coverage, regression | `tests/*.py` |
 
 ### Rules
 

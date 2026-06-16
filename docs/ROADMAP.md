@@ -1,8 +1,8 @@
 # Development Roadmap — v22.0.0 → v42.0.0
 
-**Date:** 2026-07-03
-**Baseline:** v37.1.0 — 8,518 tests across 141+ test files, 0 failures
-**Current state:** v37.1.0 shipped. All core migration, enterprise server, self-healing, Fabric-native, and analytics parity features complete. 14-agent specialization model. Migration Confidence Score: ≥97/100 (Grade A+).
+**Date:** 2026-06-16
+**Baseline:** v38.4.0 — 8,874 tests across 200 test files, 0 collection errors
+**Current state:** v38.4.0 shipped. All core migration, enterprise server, self-healing, Fabric-native, analytics parity, pixel-perfect text/format fidelity, and report-packaging features complete. 15-agent specialization model. Migration Confidence Score: ≥97/100 (Grade A+).
 
 ---
 
@@ -2165,17 +2165,19 @@ No new CLI flags. No schema changes. This patch is fully backward-compatible wit
 
 ---
 
-### Sprint 207 — Real-World Migration QA Suite (@assessor, @tester)
+### Sprint 207 — Real-World Migration QA Suite (@assessor, @tester) — ✅ DONE (207.4 autoplay pending)
 
 **Goal:** Codify the manual UC80 QA we ran (zero stray `Æ`, sizing audit, empty-visual count, font cascade verification) into an automated end-to-end report card.
 
+**Status:** Shipped in `powerbi_import/qa_suite.py` (5 read-only checks, stdlib-only), wired into `migrate.py::_run_qa_suite` with a new `--qa-strict` flag and `qa_report.html` emission, covered by `tests/test_qa_suite.py` (39 tests). Remaining: 207.4 — surface the report-card summary inside `--autoplay`.
+
 | # | Item | Owner | File(s) | Est. | Details |
 |---|------|-------|---------|------|---------|
-| 207.1 | **QA suite engine** | @assessor | `powerbi_import/qa_suite.py` (new) | High | After migration completes, run a battery of automated checks against the output: (1) no stray `Æ`/`Œ`/`nbsp` chars in any textRun value, (2) zero empty visuals (no encoded fields AND no static content), (3) all visuals have non-null `formatProperties`, (4) every dashboard zone matched to a PBI visual, (5) no orphan filters. Returns `QAReport` with per-check pass/fail + sample evidence. |
-| 207.2 | **HTML report card** | @assessor | `powerbi_import/qa_suite.py` | Medium | Generates `<output>/qa_report.html` using `html_template.py`. Pass/fail badges per check, "evidence" panel with sample failed visuals, side-by-side Tableau ↔ PBI counts (worksheets, visuals, measures, columns). |
-| 207.3 | **CLI integration** | @orchestrator | `migrate.py` | Low | `--qa` flag (already exists — wire it to call the new module instead of the current ad-hoc check). `--qa-strict` exits non-zero on any check failure for CI. |
-| 207.4 | **Integration with `--autoplay`** | @assessor | `powerbi_import/qa_suite.py`, `scripts/autoplay.py` | Low | Autoplay surface includes QA report card summary alongside existing 5 checks. |
-| 207.5 | **Tests** | @tester | `tests/test_qa_suite.py` (new) | Medium | 25+ tests: each check has a positive + negative fixture; HTML report structure; `--qa-strict` exit code wiring. |
+| 207.1 ✅ | **QA suite engine** | @assessor | `powerbi_import/qa_suite.py` (new) | High | After migration completes, run a battery of automated checks against the output: (1) no stray `Æ`/`Œ`/`nbsp` chars in any textRun value, (2) zero empty visuals (no encoded fields AND no static content), (3) all visuals have non-null `formatProperties`, (4) every dashboard zone matched to a PBI visual, (5) no orphan filters. Returns `QAReport` with per-check pass/fail + sample evidence. |
+| 207.2 ✅ | **HTML report card** | @assessor | `powerbi_import/qa_suite.py` | Medium | Generates `<output>/qa_report.html` using `html_template.py`. Pass/fail badges per check, "evidence" panel with sample failed visuals, side-by-side Tableau ↔ PBI counts (worksheets, visuals, measures, columns). |
+| 207.3 ✅ | **CLI integration** | @orchestrator | `migrate.py` | Low | `--qa` runs the report card and writes `qa_report.html`; new `--qa-strict` (implies `--qa`) exits non-zero on any error-severity check failure for CI. |
+| 207.4 ⬜ | **Integration with `--autoplay`** | @assessor | `powerbi_import/qa_suite.py`, `scripts/autoplay.py` | Low | Autoplay surface includes QA report card summary alongside existing 5 checks. |
+| 207.5 ✅ | **Tests** | @tester | `tests/test_qa_suite.py` (new) | Medium | 39 tests: each check has a positive + negative fixture; HTML report structure; `--qa-strict` exit code wiring. |
 
 **Success:** `python migrate.py UC80.twbx --qa` reports 6/6 checks pass (zero `Æ`, zero empty visuals, full format coverage, all zones matched, no orphan filters, fidelity ≥97).
 

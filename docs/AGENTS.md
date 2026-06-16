@@ -1,6 +1,6 @@
 # Multi-Agent Architecture — Tableau to Power BI Migration
 
-This project uses a **14-agent specialization model**. Each agent has scoped domain knowledge, file ownership, and clear boundaries. Four specialist agents (@dax, @wiring, @semantic, @visual) provide deep expertise, @converter and @generator remain as coordination layers, **@tableau** handles Tableau Server/Cloud interaction, and **@reviewer** enforces a preceptorship quality loop on all generated artifacts.
+This project uses a **15-agent specialization model**. Each agent has scoped domain knowledge, file ownership, and clear boundaries. Four specialist agents (@dax, @wiring, @semantic, @visual) provide deep expertise, @converter and @generator remain as coordination layers, **@tableau** handles Tableau Server/Cloud interaction, **@reviewer** enforces a preceptorship quality loop on all generated artifacts, and **@web-designer** owns the end-user UI surfaces.
 
 ## Quick Reference
 
@@ -19,6 +19,7 @@ This project uses a **14-agent specialization model**. Each agent has scoped dom
 | **@merger** | Shared semantic model, multi-workbook merge, Fabric merge | `shared_model.py`, `merge_config.py` (+ co-owns `merge_assessment.py`, `merge_report_html.py`, `thin_report_generator.py`) |
 | **@deployer** | Fabric/PBI deployment, auth, gateway, telemetry, multi-tenant | `deploy/*.py`, `gateway_config.py`, `telemetry.py`, `telemetry_dashboard.py`, `refresh_generator.py` |
 | **@reviewer** | Artifact quality review, preceptorship loop, coaching feedback, fidelity scoring | `powerbi_import/preceptor.py` |
+| **@web-designer** | End-user UI/UX, Tkinter light UI, layout clarity, presentation | `web/light_ui.py`, `docs/LIGHT_UI_ROADMAP.md` |
 | **@tester** | Tests, coverage, fixtures, regression | `tests/*.py` |
 
 ## Architecture Diagram

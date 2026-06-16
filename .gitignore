@@ -60,6 +60,18 @@ push_out.txt
 test_output.txt
 git_result.txt
 
+# Transient command/stdout dumps (regenerable, never commit)
+_diag_*.txt
+batch_result*.txt
+commit_out.txt
+pytest_*.txt
+pytest_full*.txt
+pytest_pixel*.txt
+
+# Ad-hoc root-level debug/diagnostic scripts (use scripts/diagnostics/ instead)
+/_*.py
+/_*.ps1
+
 # Test outputs
 .pytest_cache/
 .coverage

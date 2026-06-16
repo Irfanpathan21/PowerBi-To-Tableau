@@ -25,7 +25,8 @@ You co-own the following **DAX-specific post-processing blocks** in `powerbi_imp
 
 - Do NOT modify Tableau XML parsing — delegate to **@extractor**
 - Do NOT modify M query / Power Query code — delegate to **@wiring**
-- Do NOT modify TMDL structure / PBIR output — delegate to **@generator**
+- Do NOT modify TMDL structure — delegate to **@semantic**
+- Do NOT modify PBIR / report output — delegate to **@visual**
 - Do NOT modify test files — delegate to **@tester**
 - Do NOT add external dependencies
 - Preserve table/field identifier fidelity: accents, spaces, and special characters in references must remain valid in emitted DAX and post-processing
@@ -102,5 +103,5 @@ Three-factor rule:
 
 - **From @extractor**: Receives Tableau calculations with `formula`, `role`, `type`, `class` fields
 - **From @wiring**: Receives classification decisions (measure vs calc column) to guide conversion
-- **To @generator**: Produces DAX expression strings for measures and calculated columns
+- **To @semantic**: Produces DAX expression strings for measures and calculated columns (consumed by the TMDL generator)
 - **To @wiring**: When a DAX expression can be pushed down to M (Power Query), signals via `_dax_to_m_expression()` compatibility

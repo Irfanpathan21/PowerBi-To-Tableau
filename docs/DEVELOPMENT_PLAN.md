@@ -95,9 +95,9 @@ See [ROADMAP.md](ROADMAP.md) for full sprint details (Sprints 108–111).
 
 ---
 
-## 14-Agent Architecture
+## 15-Agent Architecture
 
-This project uses a **14-agent specialization model** with scoped domain knowledge and file ownership. See [AGENTS.md](AGENTS.md) for the full architecture diagram, data flow, and handoff protocol.
+This project uses a **15-agent specialization model** with scoped domain knowledge and file ownership. See [AGENTS.md](AGENTS.md) for the full architecture diagram, data flow, and handoff protocol.
 
 | Agent | Scope | Key Files |
 |-------|-------|-----------|
