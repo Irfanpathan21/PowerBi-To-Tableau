@@ -156,6 +156,44 @@ def _clean_tableau_run_text(run_elem):
     return text.replace('\u00c6', '').replace('\u00a0', '')
 
 
+def _map_text_alignment(value):
+    """Map a Tableau horizontal text alignment token to a PBI value.
+
+    Tableau encodes alignment either numerically (``1``=left, ``2``=center,
+    ``3``=right, ``4``=justify) or by name. Returns one of
+    ``left|center|right|justify`` or ``''`` when unknown.
+    """
+    if value is None:
+        return ''
+    token = str(value).strip().lower()
+    if not token:
+        return ''
+    numeric = {'0': 'left', '1': 'left', '2': 'center', '3': 'right', '4': 'justify'}
+    if token in numeric:
+        return numeric[token]
+    if token in ('left', 'center', 'centre', 'right', 'justify'):
+        return 'center' if token == 'centre' else token
+    return ''
+
+
+def _map_vertical_alignment(value):
+    """Map a Tableau vertical anchor token to a PBI value.
+
+    Returns one of ``top|middle|bottom`` or ``''`` when unknown.
+    """
+    if value is None:
+        return ''
+    token = str(value).strip().lower()
+    if not token:
+        return ''
+    mapping = {
+        '0': 'top', '1': 'top', '2': 'middle', '3': 'bottom',
+        'top': 'top', 'center': 'middle', 'centre': 'middle',
+        'middle': 'middle', 'bottom': 'bottom',
+    }
+    return mapping.get(token, '')
+
+
 def _scan_delimited_sample(text_chunk, col_names, max_rows):
     """Attempt to extract sample rows from tab- or comma-delimited blocks.
 
@@ -1495,11 +1533,24 @@ class TableauExtractor:
                             font_size = run.get('fontsize', '')
                             if font_size:
                                 run_data['font_size'] = font_size
+                            align = _map_text_alignment(
+                                run.get('fontalignment', run.get('alignment', '')))
+                            if align:
+                                run_data['alignment'] = align
                             url = run.get('href', run.get('url', ''))
                             if url:
                                 run_data['url'] = url
                             text_runs.append(run_data)
                     text_content = ''.join(parts)
+                # Zone-level horizontal / vertical text anchoring
+                text_align = ''
+                vertical_align = ''
+                for fmt in zone.findall('.//zone-style/format'):
+                    fattr = fmt.get('attr', '')
+                    if fattr == 'text-align' and not text_align:
+                        text_align = _map_text_alignment(fmt.get('value', ''))
+                    elif fattr == 'vertical-align' and not vertical_align:
+                        vertical_align = _map_vertical_alignment(fmt.get('value', ''))
                 # Deduplicate text zones (desktop+device layouts)
                 dedup_txt = f"txt_{zone_id}_{text_content}"
                 if dedup_txt in seen_names:
@@ -1510,6 +1561,8 @@ class TableauExtractor:
                     'name': zone_name or f'text_{zone_id}',
                     'content': text_content,
                     'text_runs': text_runs,
+                    'text_align': text_align,
+                    'vertical_align': vertical_align,
                     'position': pos,
                     'layout': layout_mode
                 })

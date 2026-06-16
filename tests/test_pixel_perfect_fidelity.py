@@ -553,5 +553,147 @@ class TestTableauLineBreakSentinel(unittest.TestCase):
         self.assertEqual(cleaned[2], 'ARGOS')
 
 
+# ── Text alignment fidelity (Sprint 206) ───────────────────────────
+
+class TestTextAlignment(unittest.TestCase):
+    """Tableau text zones carry per-run horizontal alignment
+    (fontalignment) and zone-level vertical anchoring (vertical-align).
+    Sprint 206 maps these onto PBI textbox paragraphs
+    (horizontalTextAlignment) and the general verticalAlignment property.
+    """
+
+    # ── Extractor-side mapping helpers ──
+
+    def _map_h(self):
+        from tableau_export.extract_tableau_data import _map_text_alignment
+        return _map_text_alignment
+
+    def _map_v(self):
+        from tableau_export.extract_tableau_data import _map_vertical_alignment
+        return _map_vertical_alignment
+
+    def test_horizontal_numeric_left(self):
+        self.assertEqual(self._map_h()('1'), 'left')
+
+    def test_horizontal_numeric_center(self):
+        self.assertEqual(self._map_h()('2'), 'center')
+
+    def test_horizontal_numeric_right(self):
+        self.assertEqual(self._map_h()('3'), 'right')
+
+    def test_horizontal_numeric_justify(self):
+        self.assertEqual(self._map_h()('4'), 'justify')
+
+    def test_horizontal_named_center(self):
+        self.assertEqual(self._map_h()('center'), 'center')
+
+    def test_horizontal_centre_british_spelling(self):
+        self.assertEqual(self._map_h()('centre'), 'center')
+
+    def test_horizontal_unknown_returns_empty(self):
+        self.assertEqual(self._map_h()('diagonal'), '')
+
+    def test_horizontal_empty_returns_empty(self):
+        self.assertEqual(self._map_h()(''), '')
+        self.assertEqual(self._map_h()(None), '')
+
+    def test_vertical_named_middle(self):
+        self.assertEqual(self._map_v()('center'), 'middle')
+
+    def test_vertical_named_bottom(self):
+        self.assertEqual(self._map_v()('bottom'), 'bottom')
+
+    def test_vertical_numeric_top(self):
+        self.assertEqual(self._map_v()('1'), 'top')
+
+    def test_vertical_unknown_returns_empty(self):
+        self.assertEqual(self._map_v()('sideways'), '')
+
+    # ── Generator-side paragraph emission ──
+
+    def test_paragraph_emits_horizontal_alignment_from_run(self):
+        gen = _make_generator()
+        obj = {
+            'content': 'Hello',
+            'text_runs': [{'text': 'Hello', 'alignment': 'center'}],
+        }
+        paras = gen._parse_rich_text_runs(obj)
+        self.assertEqual(len(paras), 1)
+        self.assertEqual(paras[0].get('horizontalTextAlignment'), 'center')
+
+    def test_paragraph_falls_back_to_zone_alignment(self):
+        gen = _make_generator()
+        obj = {
+            'content': 'Hi',
+            'text_runs': [{'text': 'Hi'}],
+            'text_align': 'right',
+        }
+        paras = gen._parse_rich_text_runs(obj)
+        self.assertEqual(paras[0].get('horizontalTextAlignment'), 'right')
+
+    def test_no_alignment_omits_property(self):
+        gen = _make_generator()
+        obj = {'content': 'Plain', 'text_runs': [{'text': 'Plain'}]}
+        paras = gen._parse_rich_text_runs(obj)
+        self.assertNotIn('horizontalTextAlignment', paras[0])
+
+    def test_multiple_paragraphs_each_carry_alignment(self):
+        gen = _make_generator()
+        obj = {
+            'content': 'A\nB',
+            'text_runs': [{'text': 'Line A\nLine B', 'alignment': 'center'}],
+        }
+        paras = gen._parse_rich_text_runs(obj)
+        self.assertEqual(len(paras), 2)
+        for p in paras:
+            self.assertEqual(p.get('horizontalTextAlignment'), 'center')
+
+    def test_fallback_plain_content_uses_zone_alignment(self):
+        gen = _make_generator()
+        obj = {'content': 'Just text', 'text_align': 'center'}
+        paras = gen._parse_rich_text_runs(obj)
+        self.assertEqual(len(paras), 1)
+        self.assertEqual(paras[0].get('horizontalTextAlignment'), 'center')
+
+    def test_textbox_emits_vertical_alignment(self):
+        gen = _make_generator()
+        gen._make_visual_position = lambda *a, **k: {  # type: ignore[assignment]
+            'x': 0, 'y': 0, 'width': 100, 'height': 50, 'z': 0,
+        }
+        obj = {
+            'content': 'Centered',
+            'text_runs': [{'text': 'Centered', 'alignment': 'center'}],
+            'vertical_align': 'middle',
+        }
+        tmpdir = tempfile.mkdtemp()
+        try:
+            gen._create_visual_textbox(tmpdir, obj, 1.0, 1.0, 0)
+            vid = os.listdir(tmpdir)[0]
+            with open(os.path.join(tmpdir, vid, 'visual.json'), 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            props = data['visual']['objects']['general'][0]['properties']
+            self.assertEqual(props.get('verticalAlignment'), 'middle')
+            self.assertEqual(props['paragraphs'][0].get('horizontalTextAlignment'), 'center')
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_textbox_omits_vertical_alignment_when_absent(self):
+        gen = _make_generator()
+        gen._make_visual_position = lambda *a, **k: {  # type: ignore[assignment]
+            'x': 0, 'y': 0, 'width': 100, 'height': 50, 'z': 0,
+        }
+        obj = {'content': 'Plain', 'text_runs': [{'text': 'Plain'}]}
+        tmpdir = tempfile.mkdtemp()
+        try:
+            gen._create_visual_textbox(tmpdir, obj, 1.0, 1.0, 0)
+            vid = os.listdir(tmpdir)[0]
+            with open(os.path.join(tmpdir, vid, 'visual.json'), 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            props = data['visual']['objects']['general'][0]['properties']
+            self.assertNotIn('verticalAlignment', props)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 if __name__ == '__main__':
     unittest.main()

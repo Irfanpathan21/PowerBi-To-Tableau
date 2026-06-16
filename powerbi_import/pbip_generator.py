@@ -1045,22 +1045,39 @@ class PowerBIProjectGenerator:
             list: PBI paragraphs array for textbox visual
         """
         text_runs = obj.get('text_runs', [])
+        zone_align = obj.get('text_align', '')
         if not text_runs:
             # Fallback: single plain run from content
-            return [{"textRuns": [{"value": obj.get('content', '')}]}]
+            para = {"textRuns": [{"value": obj.get('content', '')}]}
+            if zone_align:
+                para["horizontalTextAlignment"] = zone_align
+            return [para]
 
         # Group runs into paragraphs by newline characters
         paragraphs = []
         current_runs = []
+        current_align = ''
+
+        def _flush(runs, align):
+            para = {"textRuns": runs if runs else [{"value": ""}]}
+            resolved = align or zone_align
+            if resolved:
+                para["horizontalTextAlignment"] = resolved
+            paragraphs.append(para)
+
         for run in text_runs:
             text = run.get('text', '')
+            run_align = run.get('alignment', '')
             # Split on newlines to create separate paragraphs
             lines = text.split('\n')
             for i, line in enumerate(lines):
                 if i > 0:
                     # Newline = new paragraph
-                    paragraphs.append({"textRuns": current_runs if current_runs else [{"value": ""}]})
+                    _flush(current_runs, current_align)
                     current_runs = []
+                    current_align = ''
+                if run_align and not current_align:
+                    current_align = run_align
                 if line or i == 0:
                     pbi_run = {"value": line}
                     # Build textStyle from Tableau run formatting
@@ -1091,9 +1108,14 @@ class PowerBIProjectGenerator:
 
         # Flush last paragraph
         if current_runs:
-            paragraphs.append({"textRuns": current_runs})
+            _flush(current_runs, current_align)
 
-        return paragraphs if paragraphs else [{"textRuns": [{"value": ""}]}]
+        if not paragraphs:
+            para = {"textRuns": [{"value": ""}]}
+            if zone_align:
+                para["horizontalTextAlignment"] = zone_align
+            paragraphs.append(para)
+        return paragraphs
 
     def _create_visual_textbox(self, visuals_dir, obj, scale_x, scale_y, visual_count):
         """Create a textbox visual from a Tableau text object.
@@ -1107,6 +1129,11 @@ class PowerBIProjectGenerator:
         pos = obj.get('position', {})
         paragraphs = self._parse_rich_text_runs(obj)
 
+        general_props = {"paragraphs": paragraphs}
+        vertical = obj.get('vertical_align', '')
+        if vertical:
+            general_props["verticalAlignment"] = vertical
+
         visual_json = {
             "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.5.0/schema.json",
             "name": visual_id,
@@ -1115,9 +1142,7 @@ class PowerBIProjectGenerator:
                 "visualType": "textbox",
                 "objects": {
                     "general": [{
-                        "properties": {
-                            "paragraphs": paragraphs
-                        }
+                        "properties": general_props
                     }]
                 }
             }
