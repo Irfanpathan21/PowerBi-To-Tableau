@@ -1,5 +1,23 @@
 # Changelog
 
+## v39.0.0 — Data Blending & Advanced Connectivity
+
+### Highlights
+- **Data Blending Engine (Sprint 180)**: cross-datasource Tableau blends are now reconstructed as Power Query merge queries (`generate_blend_merge_query`), preserving primary/secondary linking fields and aggregation context.
+- **Enterprise Connector Expansion (Sprint 181)**: 8 new deep connectors with schema navigation and custom-SQL passthrough — Dremio, ClickHouse, SingleStore/MemSQL, Firebolt, Starburst/Trino, IBM Db2 (deep), Teradata (deep), Azure Synapse (deep). 20 new `_M_GENERATORS` aliases plus auto-detection entries in `datasource_extractor.py`.
+- **Custom SQL & Native Query Depth (Sprint 182)**: new stdlib-only `sql_analyzer.py` — dialect detection (T-SQL/Postgres/MySQL/Oracle/Snowflake/BigQuery/ANSI), parameter extraction (`<Parameters.X>`, `[Parameters].[X]`, `@name`, `:name`, `${name}`), SELECT-list/JOIN parsing, subquery detection, complexity grading, and parameterised `Value.NativeQuery` M emission. Wired into assessment as a "Custom SQL Depth" check.
+- **OAuth & Authentication Flow Migration (Sprint 183)**: `gateway_config.py` gains 6 new OAuth connectors (Dynamics 365, Dataverse, ServiceNow, Azure Blob, Azure Data Lake, Fabric Lakehouse), a Tableau→PBI auth-mode map, credential template v2, Azure AD service-principal config, and a PowerShell connection-test script generator.
+
+### Affected Areas
+- `tableau_export/m_query_builder.py` (8 connectors + blend merge)
+- `tableau_export/datasource_extractor.py` (connector auto-detection)
+- `powerbi_import/sql_analyzer.py` (new), `powerbi_import/assessment.py` (depth check)
+- `powerbi_import/gateway_config.py` (OAuth/auth flow)
+
+### Validation
+- New suites: `tests/test_data_blending.py`, `tests/test_enterprise_connectors.py` (54), `tests/test_sql_analyzer.py` (50), `tests/test_gateway_v2.py` (32).
+- Full regression suite green; the 11 pre-existing DAX `INDEX→ROWNUMBER` / `_quote_name` failures are now resolved.
+
 ## v38.5.0 — Floating-Overlay Fidelity & Real-World QA
 
 ### Highlights

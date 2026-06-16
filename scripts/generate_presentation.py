@@ -761,7 +761,7 @@ def build_presentation():
                  'python migrate.py workbook.twbx', font_size=20,
                  color=PBI_YELLOW, alignment=PP_ALIGN.CENTER, font_name='Cascadia Code')
     _add_textbox(slide, Inches(1), Inches(5.5), Inches(11), Inches(0.4),
-                 'v38.5.0 · 9,000+ tests · 133+ DAX conversions · 190 visual mappings',
+                 'v39.0.0 · 9,000+ tests · 133+ DAX conversions · 190 visual mappings',
                  font_size=14, color=MID_GRAY, alignment=PP_ALIGN.CENTER)
 
     # ── Save ──

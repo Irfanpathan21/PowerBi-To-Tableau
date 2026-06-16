@@ -4,19 +4,19 @@
 
 | | |
 |---|---|
-| 🏷️ **Version** | 38.5.0 |
-| ✅ **Tests** | 8,875 passed (latest full run) |
+| 🏷️ **Version** | 39.0.0 |
+| ✅ **Tests** | 9,071 passed (latest full run) |
 | 🐍 **Python** | 3.12+ · zero external dependencies |
 | 📜 **License** | MIT |
 
-| 🎯 **Capabilities** | 133+ DAX conversions · 190 visual types · 79 connectors · 23 object types |
+| 🎯 **Capabilities** | 133+ DAX conversions · 190 visual types · 87 connectors · 23 object types |
 
-### What is new in v38.5.0
+### What is new in v39.0.0
 
-- **Floating zone overlay fidelity**: the report-side overlap healer is now deterministic — overlapping zones are staggered by z-order (backdrop stays anchored, foreground nudged +32 px), stable across all `PYTHONHASHSEED` values.
-- **Pixel-perfect golden fixtures**: per-workbook visual golden fixtures with a CI drift gate (`scripts/generate_pixel_fixtures.py --check`); 7 deterministic workbooks including `Enterprise_Sales`.
-- **Mixed-alignment & vertical-anchor text runs**: per-paragraph horizontal alignment + vertical anchor preserved into PBIR textboxes.
-- **Real-world QA suite**: `--qa` / `--qa-strict` produce a 6-check migration QA report card (zero sentinel glyphs, zero empty visuals, full format coverage, all zones matched, no orphan filters, fidelity ≥97) with an HTML report and CI-strict exit code.
+- **Data Blending Engine**: cross-datasource Tableau blends are reconstructed as Power Query merge queries with primary/secondary linking fields preserved.
+- **Enterprise Connector Expansion**: 8 new deep connectors with schema navigation and custom-SQL passthrough — Dremio, ClickHouse, SingleStore/MemSQL, Firebolt, Starburst/Trino, IBM Db2, Teradata, Azure Synapse.
+- **Custom SQL & Native Query Depth**: a stdlib SQL analyzer detects dialect, parameters, joins and subqueries, grades query complexity, and emits parameterised `Value.NativeQuery` M. Surfaced in the migration assessment as a "Custom SQL Depth" check.
+- **OAuth & Authentication Flow Migration**: Tableau auth modes map to Power BI credential types; credential template v2, Azure AD service-principal config and a PowerShell connection-test script are generated for OAuth/SP-capable connectors.
 
 #### Pixel-perfect fidelity (4-axis coverage)
 
@@ -691,7 +691,7 @@ TableauToPowerBI/
 │   ├── schema_drift.py                        #   Schema drift detection (v28)
 │   └── deploy/                                #   Deploy to PBI Service / Fabric
 ├── Dockerfile                                 # Docker image for API server
-├── tests/                                     # 8,875 tests in latest full run
+├── tests/                                     # 9,071 tests in latest full run
 ├── docs/                                      # 18 documentation files
 └── examples/                                  # Sample Tableau workbooks
 ```
