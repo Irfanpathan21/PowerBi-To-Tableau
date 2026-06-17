@@ -34,6 +34,7 @@ The migration engine has reached **full-platform maturity** — single-workbook,
 | **v38.4.0** | Pixel-Perfect Text & Format Fidelity | 200–203 | ✅ Shipped |
 | **v38.5.0** | Floating-Overlay Fidelity & Real-World QA | 204–208 | ✅ Shipped |
 | **v39.0.0** | Data Blending & Advanced Connectivity | 180–184 | ✅ Shipped |
+| **v40.0.0** | VS Code Extension & Interactive Tooling | 185–189 | ✅ Shipped |
 | **v40.0.0** | VS Code Extension & Interactive Tooling | 185–189 | Planned |
 | **v41.0.0** | Real-Time, Streaming & Paginated Reports | 190–194 | Planned |
 | **v42.0.0** | Ecosystem Maturity & GA Polish | 195–199 | Planned |

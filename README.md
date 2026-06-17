@@ -4,14 +4,21 @@
 
 | | |
 |---|---|
-| 🏷️ **Version** | 39.0.0 |
-| ✅ **Tests** | 9,071 passed (latest full run) |
+| 🏷️ **Version** | 40.0.0 |
+| ✅ **Tests** | 9,150+ passed (Python) · 38 extension unit tests |
 | 🐍 **Python** | 3.12+ · zero external dependencies |
 | 📜 **License** | MIT |
 
 | 🎯 **Capabilities** | 133+ DAX conversions · 190 visual types · 87 connectors · 23 object types |
 
-### What is new in v39.0.0
+### What is new in v40.0.0
+
+- **VS Code Extension**: assess, preview DAX, and migrate workbooks without leaving the editor — workbook tree view, assessment webview, one-click migrate, status bar, and a side-by-side DAX preview with editable overrides. Includes TextMate syntax highlighting for DAX and Tableau calculations. See `docs/VS_CODE_EXTENSION.md`.
+- **Interactive Notebook API v2**: `MigrationSession` gains interactive assessment (radar SVG), a filterable DAX explorer, a Mermaid relationship diagram, and step-by-step extract/convert/generate/validate helpers for Jupyter.
+- **Plugin SDK v2**: a versioned `MigrationPlugin` base class with formal hooks, manifest validation, error-isolated dispatch, and a `PluginTestRunner`. Backward compatible with the legacy hook-based plugins. See `docs/PLUGIN_SDK.md`.
+- **Marketplace v2**: pattern dependency resolution, remote catalogue sync, and curated Healthcare/Finance/Retail industry packs.
+
+### What was new in v39.0.0
 
 - **Data Blending Engine**: cross-datasource Tableau blends are reconstructed as Power Query merge queries with primary/secondary linking fields preserved.
 - **Enterprise Connector Expansion**: 8 new deep connectors with schema navigation and custom-SQL passthrough — Dremio, ClickHouse, SingleStore/MemSQL, Firebolt, Starburst/Trino, IBM Db2, Teradata, Azure Synapse.

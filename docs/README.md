@@ -1,6 +1,6 @@
 # Documentation
 
-Current release baseline: **v39.0.0** (see `../CHANGELOG.md` and `ROADMAP.md`).
+Current release baseline: **v40.0.0** (see `../CHANGELOG.md` and `ROADMAP.md`).
 
 ## Guides
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## v40.0.0 — VS Code Extension & Interactive Tooling
+
+### Highlights
+- **VS Code Extension (Sprints 185–186)**: a new `vscode-extension/` front-end over the Python engine. Workbook **tree view** (datasources → tables → columns, worksheets, dashboards, parameters), **assessment webview** with severity badges, **one-click migrate** with progress + output-folder link, a **status bar** showing migration state and last fidelity, and a **side-by-side DAX preview** with editable overrides saved to `config.json`. TextMate **syntax grammars** for DAX (`source.dax`) and Tableau calculations (`source.tableau`, incl. LOD and table-calc scopes).
+- **Interactive Notebook API v2 (Sprint 187)**: `MigrationSession` gains `assess_interactive` (radar SVG), `explore_dax` (filterable explorer), `show_relationships` (Mermaid ER diagram), and step-by-step `step_extract`/`step_convert`/`step_generate`/`step_validate` helpers for Jupyter-driven migrations.
+- **Plugin SDK v2 (Sprint 188)**: new `powerbi_import/plugin_sdk.py` — a versioned `MigrationPlugin` base class with formal hooks (`on_extract`, `on_convert_dax`, `on_generate_visual`, `on_validate`), manifest schema validation, error-isolated dispatch, a `PluginTestRunner` (`assert_dax_valid`/`assert_m_valid`/`assert_visual_schema`), and a bridge to the legacy `plugins.py` auto-discovery. Backward compatible with v1 hooks.
+- **Marketplace v2 (Sprint 188)**: `marketplace.py` adds pattern dependency tracking (`resolve_dependencies`), remote catalogue sync (`sync_remote`), and curated industry packs (Healthcare/Finance/Retail) under `examples/marketplace/packs/`.
+
+### Affected Areas
+- `vscode-extension/` (new): TypeScript extension, grammars, 38 unit tests.
+- `powerbi_import/notebook_api.py` (interactive v2 methods).
+- `powerbi_import/plugin_sdk.py` (new), `powerbi_import/marketplace.py` (deps + sync), `examples/marketplace/packs/` (new).
+
+### Validation
+- New suites: `tests/test_plugin_sdk.py` (49), `tests/test_notebook_api_v2.py` (35); extension `npm test` (38 unit tests).
+- Full Python regression suite green.
+
+### Docs
+- New: `docs/VS_CODE_EXTENSION.md`, `docs/PLUGIN_SDK.md`, `vscode-extension/README.md`.
+
 ## v39.0.0 — Data Blending & Advanced Connectivity
 
 ### Highlights
