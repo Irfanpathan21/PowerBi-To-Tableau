@@ -221,6 +221,12 @@ class TestNativeQueryM:
         m = to_native_query_m('SELECT name FROM t WHERE name = "x"', "s", "d")
         assert '""x""' in m
 
+    def test_named_instance_server_not_corrupted(self):
+        # Backslash is literal in M strings — must NOT be doubled.
+        m = to_native_query_m("SELECT id FROM t", "SERVER\\SQLEXPRESS", "db")
+        assert 'Sql.Database("SERVER\\SQLEXPRESS", "db")' in m
+        assert "\\\\" not in m
+
     def test_tableau_param_rewrite(self):
         m = to_native_query_m(
             "SELECT * FROM t WHERE region = <Parameters.Region>",

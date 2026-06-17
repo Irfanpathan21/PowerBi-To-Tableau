@@ -445,4 +445,10 @@ def _safe_param(name: str) -> str:
 
 
 def _m_escape(value: str) -> str:
-    return str(value).replace("\\", "\\\\").replace('"', '""')
+    """Escape a value for a Power Query M double-quoted string literal.
+
+    In M, the only special character inside a text literal is the double
+    quote, escaped by doubling. Backslashes are literal — so a SQL Server
+    named instance like ``SERVER\\INSTANCE`` must be left untouched.
+    """
+    return str(value).replace('"', '""')
