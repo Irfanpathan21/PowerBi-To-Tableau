@@ -23,22 +23,69 @@ _TABLEAU_FUNC_LEAK = re.compile(
 
 def _check_balanced(expr: str) -> List[str]:
     issues = []
-    pairs = {')': '(', ']': '[', '}': '{'}
+    pairs = {')': '(', '}': '{'}
     openers = set(pairs.values())
     stack = []
-    for idx, ch in enumerate(expr):
+    i = 0
+    n = len(expr)
+    while i < n:
+        ch = expr[i]
+        # Skip double-quoted string literals — brackets/parens inside are data.
+        if ch == '"':
+            i += 1
+            while i < n:
+                if expr[i] == '"' and i + 1 < n and expr[i + 1] == '"':
+                    i += 2
+                    continue
+                if expr[i] == '"':
+                    i += 1
+                    break
+                i += 1
+            continue
+        # Skip single-quoted table identifiers.
+        if ch == "'":
+            i += 1
+            while i < n:
+                if expr[i] == "'" and i + 1 < n and expr[i + 1] == "'":
+                    i += 2
+                    continue
+                if expr[i] == "'":
+                    i += 1
+                    break
+                i += 1
+            continue
+        # Treat [Col name] bracketed identifiers as atomic, self-balancing
+        # spans — parens inside a name (e.g. [Show % (Indicateur Nat)]) are
+        # literal characters, not grouping operators.
+        if ch == '[':
+            start = i
+            i += 1
+            closed = False
+            while i < n:
+                if expr[i] == ']' and i + 1 < n and expr[i + 1] == ']':
+                    i += 2
+                    continue
+                if expr[i] == ']':
+                    i += 1
+                    closed = True
+                    break
+                i += 1
+            if not closed:
+                issues.append(f'unmatched opening "[" at pos {start}')
+            continue
         if ch in openers:
-            stack.append((ch, idx))
+            stack.append((ch, i))
         elif ch in pairs:
             if not stack:
-                issues.append(f'unmatched closing "{ch}" at pos {idx}')
+                issues.append(f'unmatched closing "{ch}" at pos {i}')
             elif stack[-1][0] != pairs[ch]:
                 issues.append(
-                    f'mismatched bracket at pos {idx}: expected close for "{stack[-1][0]}" but got "{ch}"'
+                    f'mismatched bracket at pos {i}: expected close for "{stack[-1][0]}" but got "{ch}"'
                 )
                 stack.pop()
             else:
                 stack.pop()
+        i += 1
     for ch, idx in stack:
         issues.append(f'unmatched opening "{ch}" at pos {idx}')
     return issues
@@ -52,6 +99,21 @@ def _check_quotes(expr: str) -> List[str]:
     n = len(expr)
     while i < n:
         ch = expr[i]
+        # Bracketed identifiers [Col name] are opaque: apostrophes and double
+        # quotes inside a column/measure name (e.g. [% ou Nombre d 'appel] or
+        # [Sales "USD"]) are literal characters, not quote delimiters. Skip the
+        # whole bracket span (DAX escapes a literal ] as ]]).
+        if ch == '[' and not in_double and not in_single:
+            i += 1
+            while i < n:
+                if expr[i] == ']' and i + 1 < n and expr[i + 1] == ']':
+                    i += 2
+                    continue
+                if expr[i] == ']':
+                    i += 1
+                    break
+                i += 1
+            continue
         if ch == '"' and not in_single:
             # DAX escapes quotes with doubled ""
             if in_double and i + 1 < n and expr[i + 1] == '"':

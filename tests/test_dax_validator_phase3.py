@@ -63,6 +63,35 @@ class TestDaxValidatorPhase3(unittest.TestCase):
         issues = validate_dax_expression("/* comment */ SUM([A])")
         self.assertEqual(issues, [])
 
+    def test_apostrophe_inside_bracketed_identifier_is_valid(self):
+        # Column/measure names may contain apostrophes; they are NOT single-quote
+        # delimiters. Regression for UC80 [% ou Nombre d 'appel] false positives.
+        expr = 'IF([% ou Nombre d \'appel] = "% total", "yes", "no")'
+        issues = validate_dax_expression(expr)
+        self.assertEqual(issues, [])
+
+    def test_double_quote_inside_bracketed_identifier_is_valid(self):
+        expr = 'IF([Sales "USD"] > 0, "high", "low")'
+        issues = validate_dax_expression(expr)
+        self.assertEqual(issues, [])
+
+    def test_apostrophe_in_bracket_with_string_literal_apostrophe(self):
+        # Both the identifier and the string literal contain apostrophes.
+        expr = '[% ou Nombre d \'appel] = "Nbr d\'appel"'
+        issues = validate_dax_expression(expr)
+        self.assertEqual(issues, [])
+
+    def test_parens_inside_bracketed_identifier_are_literal(self):
+        # A measure name with parentheses must not be counted as grouping.
+        expr = 'IF([Show % (Indicateur Nat)] = "x", BLANK(), 1)'
+        issues = validate_dax_expression(expr)
+        self.assertEqual(issues, [])
+
+    def test_brackets_inside_string_literal_not_counted(self):
+        expr = 'CONCATENATE("prefix [", [Col])'
+        issues = validate_dax_expression(expr)
+        self.assertEqual(issues, [])
+
     def test_multiple_tableau_leak_tokens(self):
         for tok in ['DATETRUNC', 'DATEPART', 'IFNULL', 'ISNULL', 'COUNTD',
                      'WINDOW_SUM', 'RUNNING_SUM', 'RANK_UNIQUE', 'PREVIOUS_VALUE']:

@@ -1734,6 +1734,20 @@ def _convert_single_quoted_strings(dax):
     table_names = set()
     i = 0
     while i < len(dax):
+        # Skip bracketed identifiers [Col name] — apostrophes/quotes inside
+        # a column/measure name (e.g. [% ou Nombre d'appel]) are part of the
+        # identifier and must never be parsed as string-literal delimiters.
+        if dax[i] == '[':
+            j = i + 1
+            while j < len(dax):
+                if dax[j] == ']' and j + 1 < len(dax) and dax[j + 1] == ']':
+                    j += 2
+                    continue
+                if dax[j] == ']':
+                    break
+                j += 1
+            i = j + 1
+            continue
         if dax[i] == "'":
             j = i + 1
             while j < len(dax):
@@ -1766,6 +1780,21 @@ def _convert_single_quoted_strings(dax):
     i = 0
     while i < len(dax):
         ch = dax[i]
+        # Skip bracketed identifiers [Col name] verbatim — apostrophes and
+        # quotes inside a column/measure name are part of the identifier and
+        # must not be treated as string-literal delimiters.
+        if ch == '[':
+            j = i + 1
+            while j < len(dax):
+                if dax[j] == ']' and j + 1 < len(dax) and dax[j + 1] == ']':
+                    j += 2
+                    continue
+                if dax[j] == ']':
+                    break
+                j += 1
+            result.append(dax[i:j + 1])
+            i = j + 1
+            continue
         # Skip double-quoted strings
         if ch == '"':
             j = i + 1
