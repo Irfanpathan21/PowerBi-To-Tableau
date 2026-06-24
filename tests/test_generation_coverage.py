@@ -1193,8 +1193,8 @@ class TestCalendarHeatMap(unittest.TestCase):
         objects = visual.get("objects", {})
         vals = objects.get("values", [])
         self.assertTrue(len(vals) > 0, "Calendar heat map should have values objects")
-        # Should have migration note
-        annotations = visual.get("annotations", [])
+        # Should have migration note (PBIR v4.0: at the container root)
+        annotations = container.get("annotations", [])
         notes = [a["value"] for a in annotations if a.get("name") == "MigrationNote"]
         self.assertTrue(any("heat map" in n.lower() or "calendar" in n.lower() for n in notes))
 

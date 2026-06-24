@@ -608,8 +608,12 @@ def _convert_if_structure(text):
     max_iter = 30
     for _ in range(max_iter):
         # IF cond THEN val ELSE val2 END (innermost)
+        # Note: the anchor ``\bIF\b\s*`` (not ``\bIF\s+``) lets Tableau's
+        # paren-style ``if(cond) then ...`` (no space before ``(``) match too.
+        # The content lookaheads keep ``\bIF\s`` (keyword form only) so an
+        # already-converted inner ``IF(...)`` does NOT block the outer IF.
         m = re.search(
-            r'\bIF\s+((?:(?!\bIF\s|\bEND\b).)*?)\s+THEN\s+((?:(?!\bIF\s|\bEND\b).)*?)\s+ELSE\s+((?:(?!\bIF\s|\bEND\b).)*?)\s+END\b',
+            r'\bIF\b\s*((?:(?!\bIF\s|\bEND\b).)*?)\s+THEN\s+((?:(?!\bIF\s|\bEND\b).)*?)\s+ELSE\s+((?:(?!\bIF\s|\bEND\b).)*?)\s+END\b',
             text, re.IGNORECASE | re.DOTALL
         )
         if m:
@@ -619,7 +623,7 @@ def _convert_if_structure(text):
         
         # IF cond THEN val END (no ELSE)
         m = re.search(
-            r'\bIF\s+((?:(?!\bIF\s|\bEND\b).)*?)\s+THEN\s+((?:(?!\bIF\s|\bEND\b).)*?)\s+END\b',
+            r'\bIF\b\s*((?:(?!\bIF\s|\bEND\b).)*?)\s+THEN\s+((?:(?!\bIF\s|\bEND\b).)*?)\s+END\b',
             text, re.IGNORECASE | re.DOTALL
         )
         if m:

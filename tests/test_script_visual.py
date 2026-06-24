@@ -106,7 +106,8 @@ class TestScriptVisualContainer(unittest.TestCase):
     def test_annotation(self):
         script_info = {'language': 'python', 'code': 'x=1', 'function': 'SCRIPT_BOOL'}
         v = generate_script_visual('test', script_info)
-        annotations = v['visual'].get('annotations', [])
+        # PBIR v4.0: annotations live at the container root, not in visual.
+        annotations = v.get('annotations', [])
         note = [a for a in annotations if a['name'] == 'MigrationNote']
         self.assertEqual(len(note), 1)
         self.assertIn('SCRIPT_BOOL', note[0]['value'])

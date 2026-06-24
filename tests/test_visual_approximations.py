@@ -82,8 +82,9 @@ class TestLollipopApproximation(unittest.TestCase):
             col_table_map={"Category": "T", "Value": "T"},
         )
         visual = container["visual"]
-        self.assertIn("annotations", visual)
-        notes = [a["value"] for a in visual["annotations"] if a["name"] == "MigrationNote"]
+        # PBIR v4.0: annotations live at the container root, not in visual.
+        self.assertIn("annotations", container)
+        notes = [a["value"] for a in container["annotations"] if a["name"] == "MigrationNote"]
         self.assertTrue(any("Lollipop" in n for n in notes))
 
     def test_lollipop_in_approximation_map(self):
@@ -283,7 +284,8 @@ class TestCalendarHeatMapApproximation(unittest.TestCase):
             col_table_map={"Date": "T", "Value": "T"},
         )
         visual = container["visual"]
-        notes = [a["value"] for a in visual.get("annotations", []) if a["name"] == "MigrationNote"]
+        # PBIR v4.0: annotations live at the container root, not in visual.
+        notes = [a["value"] for a in container.get("annotations", []) if a["name"] == "MigrationNote"]
         self.assertTrue(any("DayOfWeek" in n for n in notes))
 
 

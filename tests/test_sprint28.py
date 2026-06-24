@@ -595,7 +595,8 @@ class TestGenerateScriptVisual(unittest.TestCase):
         self.assertEqual(visual['visualType'], 'scriptVisual')
         self.assertIn('script', visual)
         self.assertIn('matplotlib', visual['script']['scriptText'])
-        self.assertIn('MigrationNote', str(visual.get('annotations', [])))
+        # PBIR v4.0: annotations live at the container root, not in visual.
+        self.assertIn('MigrationNote', str(container.get('annotations', [])))
 
     def test_r_visual(self):
         script_info = {
@@ -632,7 +633,8 @@ class TestGenerateScriptVisual(unittest.TestCase):
             'return_type': 'int',
         }
         container = self._gen('Test', script_info)
-        annotations = container['visual'].get('annotations', [])
+        # PBIR v4.0: annotations live at the container root, not in visual.
+        annotations = container.get('annotations', [])
         self.assertTrue(len(annotations) > 0)
         note = annotations[0]['value']
         self.assertIn('Python', note)

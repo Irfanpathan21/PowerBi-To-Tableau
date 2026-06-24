@@ -156,7 +156,8 @@ class TestVisualQueryUnknownMeasure(unittest.TestCase):
         state = _make_state([_page('p1', [v])])
         repairs = _heal_visual_query_unknown_measure(state)
         self.assertEqual(repairs, 1)
-        notes = v['json']['visual']['annotations']
+        # PBIR v4.0: annotations live at the visual.json root, not in visual.
+        notes = v['json']['annotations']
         self.assertTrue(any(a['name'] == 'MigrationNote_BadRef' for a in notes))
 
     def test_clean_ref_untouched(self):

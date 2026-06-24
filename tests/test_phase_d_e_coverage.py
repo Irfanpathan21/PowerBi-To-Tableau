@@ -134,8 +134,8 @@ class TestMigrationNoteOnVisuals(unittest.TestCase):
         ws = {"name": "Test Sankey", "visualType": "sankey",
               "dataFields": [{"field": "A", "role": "dimension"}]}
         result = create_visual_container(ws)
-        visual = result.get("visual", {})
-        annotations = visual.get("annotations", [])
+        # PBIR v4.0: annotations live at the container root, not in visual.
+        annotations = result.get("annotations", [])
         self.assertTrue(len(annotations) > 0, "Sankey visual should have migration annotation")
         self.assertEqual(annotations[0]["name"], "MigrationNote")
 
@@ -144,15 +144,15 @@ class TestMigrationNoteOnVisuals(unittest.TestCase):
               "dataFields": [{"field": "A", "role": "dimension"}]}
         result = create_visual_container(ws)
         visual = result.get("visual", {})
-        annotations = visual.get("annotations", [])
+        annotations = result.get("annotations", []) + visual.get("annotations", [])
         self.assertEqual(len(annotations), 0, "Exact PBI type should have no annotation")
 
     def test_butterfly_visual_has_annotation(self):
         ws = {"name": "Test Butterfly", "visualType": "butterfly",
               "dataFields": [{"field": "A", "role": "dimension"}]}
         result = create_visual_container(ws)
-        visual = result.get("visual", {})
-        annotations = visual.get("annotations", [])
+        # PBIR v4.0: annotations live at the container root, not in visual.
+        annotations = result.get("annotations", [])
         self.assertTrue(len(annotations) > 0)
         self.assertIn("Butterfly", annotations[0]["value"])
 
@@ -272,7 +272,7 @@ class TestDetectManyToMany(unittest.TestCase):
         self._detect(model, [])
         self.assertEqual(rels[0]["fromCardinality"], "many")
         self.assertEqual(rels[0]["toCardinality"], "many")
-        self.assertEqual(rels[0]["crossFilteringBehavior"], "bothDirections")
+        self.assertEqual(rels[0]["crossFilteringBehavior"], "oneDirection")
 
     def test_left_join_sets_many_to_many(self):
         """Non-Calendar tables default to manyToMany (cannot verify uniqueness)."""
@@ -281,7 +281,7 @@ class TestDetectManyToMany(unittest.TestCase):
         self._detect(model, [])
         self.assertEqual(rels[0]["fromCardinality"], "many")
         self.assertEqual(rels[0]["toCardinality"], "many")
-        self.assertEqual(rels[0]["crossFilteringBehavior"], "bothDirections")
+        self.assertEqual(rels[0]["crossFilteringBehavior"], "oneDirection")
 
     def test_inner_join_sets_many_to_many(self):
         """Non-Calendar tables default to manyToMany (cannot verify uniqueness)."""

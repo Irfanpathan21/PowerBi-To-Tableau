@@ -52,6 +52,30 @@ def _m_escape_col_name(name):
     return name.replace('"', '""')
 
 
+def _clean_sheet_name(raw, fallback):
+    """Normalise a Tableau-derived sheet/table name for Excel Item navigation.
+
+    Tableau often stores the source table as a qualified identifier such as
+    ``[extract].[Extract]`` or ``[Sheet1$]``.  When embedded directly into an
+    M ``Item="..."`` clause the brackets and ``].[`` separator leak into the
+    workbook navigation and break the query.  This takes the last segment,
+    strips surrounding brackets, a trailing ``$``, and any residual
+    double-quotes.
+    """
+    name = (raw or '').strip()
+    if not name:
+        name = fallback or ''
+    # Take the last qualified segment: ``[ds].[Extract]`` → ``Extract]``
+    if '].[' in name:
+        name = name.rsplit('].[', 1)[-1]
+    # Strip surrounding/residual brackets and quotes
+    name = name.strip().strip('[]').strip('"').strip()
+    name = name.rstrip('$')
+    if not name:
+        name = (fallback or '').rstrip('$')
+    return _m_escape_col_name(name)
+
+
 def _m_escape_string(value):
     """Escape a value for embedding inside an M double-quoted string literal.
 
@@ -101,8 +125,7 @@ def _append_type_step(m_query, columns, prev_step='#"Promoted Headers"'):
 def _gen_m_excel(details, table_name, columns):
     filename = _file_basename(details.get('filename') or (table_name + '.xlsx'))
     file_path_bs = filename.replace('/', '\\')
-    sheet_name = details.get('_source_table', '') or table_name
-    sheet_name = sheet_name.rstrip('$')
+    sheet_name = _clean_sheet_name(details.get('_source_table', ''), table_name)
     safe_step = '#"' + table_name + ' Sheet"'
 
     m_query = 'let\n'
@@ -412,8 +435,7 @@ def _gen_m_google_sheets(details, table_name, columns):
 def _gen_m_sharepoint(details, table_name, columns):
     site_url = details.get('site_url', 'https://contoso.sharepoint.com/sites/mysite')
     filename = details.get('filename', table_name + '.xlsx')
-    sheet_name = details.get('_source_table', '') or table_name
-    sheet_name = sheet_name.rstrip('$')
+    sheet_name = _clean_sheet_name(details.get('_source_table', ''), table_name)
 
     m_query = 'let\n'
     m_query += f'    // Source SharePoint: {site_url}\n'

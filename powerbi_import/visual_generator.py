@@ -2367,6 +2367,13 @@ def create_visual_container(worksheet, visual_id=None, x=10, y=10,
         "visual": visual_obj,
     }
 
+    # PBIR v4.0: ``annotations`` is only valid at the visual.json root
+    # (container) level — the schema rejects it inside the ``visual`` object.
+    # Lift any collected migration notes up to the container.
+    _moved_notes = visual_obj.pop("annotations", None)
+    if _moved_notes:
+        container["annotations"] = _moved_notes
+
     # ── Action button navigation ──────────────────────────────
     if pbi_type == "actionButton":
         nav_target = worksheet.get('navigation', worksheet.get('action', {}))
@@ -3467,5 +3474,11 @@ def generate_script_visual(visual_name, script_info, fields=None,
         },
         "visual": visual_obj,
     }
+
+    # PBIR v4.0: ``annotations`` is only valid at the visual.json root
+    # (container) level, not inside the ``visual`` object.
+    _moved_notes = visual_obj.pop("annotations", None)
+    if _moved_notes:
+        container["annotations"] = _moved_notes
 
     return container

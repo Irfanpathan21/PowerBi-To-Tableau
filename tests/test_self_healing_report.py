@@ -331,7 +331,8 @@ class TestQueryNoSelect(unittest.TestCase):
                                        'query': {'queryState': {}}}})
         state = _make_state(pages=[_page('p1', [v])])
         self.assertEqual(_heal_visual_query_no_select(state), 1)
-        annotations = v['json']['visual'].get('annotations', [])
+        # PBIR v4.0: annotations live at the visual.json root, not in visual.
+        annotations = v['json'].get('annotations', [])
         self.assertTrue(any(a.get('name') == 'MigrationNote' for a in annotations))
 
     def test_with_projections_unchanged(self):

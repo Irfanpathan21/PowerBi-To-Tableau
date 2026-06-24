@@ -551,7 +551,8 @@ def _heal_visual_query_no_select(state, recovery=None) -> int:
             if non_empty > 0:
                 continue
             # Add a MigrationNote so it's visible in version control diffs
-            notes = visual_block.setdefault('annotations', [])
+            # PBIR v4.0: annotations live at the visual.json root (vj).
+            notes = vj.setdefault('annotations', [])
             if not any(
                 isinstance(a, dict) and a.get('name') == 'MigrationNote'
                 for a in notes
@@ -693,7 +694,9 @@ def _heal_visual_query_unknown_measure(state, recovery=None) -> int:
                     elif isinstance(field.get('Column'), dict):
                         prop = field['Column'].get('Property', '')
                     if prop and _BAD_REF.search(prop):
-                        notes = vblock.setdefault('annotations', [])
+                        # PBIR v4.0: annotations must live at the visual.json
+                        # root (vj), not inside the ``visual`` block (vblock).
+                        notes = vj.setdefault('annotations', [])
                         if not any(isinstance(a, dict) and a.get('name') == 'MigrationNote_BadRef'
                                    for a in notes):
                             notes.append({
@@ -734,7 +737,8 @@ def _heal_slicer_targets_missing_field(state, recovery=None) -> int:
                 if has_field:
                     break
             if not has_field:
-                notes = vblock.setdefault('annotations', [])
+                # PBIR v4.0: annotations live at the visual.json root (vj).
+                notes = vj.setdefault('annotations', [])
                 if not any(isinstance(a, dict) and a.get('name') == 'MigrationNote_SlicerNoField'
                            for a in notes):
                     notes.append({

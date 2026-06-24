@@ -2618,15 +2618,39 @@ def _apply_semantic_enrichments(model, extra_objects, main_table_name, column_ta
     # Phase 11: Deactivate relationships that create ambiguous paths
     _deactivate_ambiguous_paths(model)
 
-    # Deduplicate measures globally
-    global_measure_names = set()
+    # Deduplicate measures globally with case-insensitive uniqueness.
+    # PBI measure names must be globally unique and are compared
+    # case-insensitively, so 'index' and 'Index' collide and the model
+    # fails to load.  Within a table, drop exact (case-insensitive)
+    # duplicates; across tables, namespace the later measure with a
+    # table-name suffix so both survive and the model still opens.
+    global_measure_names = set()  # case-folded names
     for table in model["model"]["tables"]:
+        tname = table.get("name", "")
+        seen_in_table = set()  # case-folded names within this table
         unique_measures = []
         for measure in table.get("measures", []):
             mname = measure.get("name", "")
-            if mname not in global_measure_names:
-                global_measure_names.add(mname)
-                unique_measures.append(measure)
+            key = mname.casefold()
+            if key in seen_in_table:
+                # Same-table duplicate → drop the second occurrence
+                print(f"  ⚕ Self-heal: Dropped duplicate measure '{mname}' in '{tname}'")
+                continue
+            if key in global_measure_names:
+                # Cross-table case collision → namespace to keep both
+                new_name = f"{mname} ({tname})"
+                nkey = new_name.casefold()
+                suffix = 2
+                while nkey in global_measure_names or nkey in seen_in_table:
+                    new_name = f"{mname} ({tname}) {suffix}"
+                    nkey = new_name.casefold()
+                    suffix += 1
+                print(f"  ⚕ Self-heal: Renamed colliding measure '{mname}' → '{new_name}'")
+                measure["name"] = new_name
+                key = nkey
+            seen_in_table.add(key)
+            global_measure_names.add(key)
+            unique_measures.append(measure)
         table["measures"] = unique_measures
 
     # Phase 12: Auto-generate perspectives from table list
@@ -3879,8 +3903,11 @@ def _detect_many_to_many(model, datasources):
         if join_type == 'full':
             rel['fromCardinality'] = 'many'
             rel['toCardinality'] = 'many'
-            rel['crossFilteringBehavior'] = 'bothDirections'
-            print(f"  ⚠️  Relation → '{to_table}.{to_col}' set to manyToMany (full join).")
+            # Single-direction is the safe default for many-to-many: a
+            # bidirectional m2m relationship creates ambiguous filter paths
+            # that PBI Desktop flags/blocks.
+            rel['crossFilteringBehavior'] = 'oneDirection'
+            print(f"  ⚠️  Relation → '{to_table}.{to_col}' set to manyToMany (full join, single-direction).")
         else:
             # Column-count ratio heuristic
             from_cols = table_col_counts.get(from_table, 0)
@@ -3900,14 +3927,14 @@ def _detect_many_to_many(model, datasources):
                 # Inferred relationship on a non-key column → manyToMany (safe default)
                 rel['fromCardinality'] = 'many'
                 rel['toCardinality'] = 'many'
-                rel['crossFilteringBehavior'] = 'bothDirections'
-                print(f"  ⚠️  Relation → '{to_table}.{to_col}' set to manyToMany (inferred, non-key column).")
+                rel['crossFilteringBehavior'] = 'oneDirection'
+                print(f"  ⚠️  Relation → '{to_table}.{to_col}' set to manyToMany (inferred, non-key column, single-direction).")
             elif from_cols > 0 and to_cols >= 0.7 * from_cols:
                 # Both tables have similar column counts → peer/fact tables
                 rel['fromCardinality'] = 'many'
                 rel['toCardinality'] = 'many'
-                rel['crossFilteringBehavior'] = 'bothDirections'
-                print(f"  ⚠️  Relation → '{to_table}.{to_col}' set to manyToMany (peer table, {to_cols}/{from_cols} cols ≥ 70%).")
+                rel['crossFilteringBehavior'] = 'oneDirection'
+                print(f"  ⚠️  Relation → '{to_table}.{to_col}' set to manyToMany (peer table, {to_cols}/{from_cols} cols ≥ 70%, single-direction).")
             elif to_table == 'Calendar':
                 # Calendar.Date is guaranteed unique (generated table)
                 rel['fromCardinality'] = 'many'
@@ -3925,8 +3952,8 @@ def _detect_many_to_many(model, datasources):
                 # PBI silently drops manyToOne relationships if the "one" side has duplicates
                 rel['fromCardinality'] = 'many'
                 rel['toCardinality'] = 'many'
-                rel['crossFilteringBehavior'] = 'bothDirections'
-                print(f"  ⚠️  Relation → '{to_table}.{to_col}' set to manyToMany (cannot verify uniqueness).")
+                rel['crossFilteringBehavior'] = 'oneDirection'
+                print(f"  ⚠️  Relation → '{to_table}.{to_col}' set to manyToMany (cannot verify uniqueness, single-direction).")
 
 
 def _fix_related_for_many_to_many(model):
