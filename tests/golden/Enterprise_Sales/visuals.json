@@ -28,13 +28,13 @@
    "z": 2000
   },
   {
-   "fields": 4,
+   "fields": 3,
    "has_format": true,
    "height": 72,
    "page": "Enterprise Sales Dashboard",
    "title_font": "",
    "title_size": "",
-   "type": "lineChart",
+   "type": "lineClusteredColumnComboChart",
    "width": 1152,
    "x": 0,
    "y": 648,

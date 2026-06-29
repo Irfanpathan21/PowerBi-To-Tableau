@@ -1,5 +1,0 @@
-relationship 346df322-4b3f-4df8-81e6-f317c4106308
-	fromColumn: Extract.Date
-	toColumn: Calendar.Date
-	crossFilteringBehavior: oneDirection
-

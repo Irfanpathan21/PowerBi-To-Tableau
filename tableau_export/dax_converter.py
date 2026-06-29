@@ -61,6 +61,7 @@ _SIMPLE_FUNCTION_MAP = [
 
     # Null/logic
     (r'\bISNULL\b', 'ISBLANK'),
+    (r'\bNULL\s*\(\)', 'BLANK()'),  # Bug #20: NULL() is not valid DAX
     (r'\bISNUMBER\s*\(', 'ISNUMBER('),
     (r'\bNOT\s*\(', 'NOT('),
 

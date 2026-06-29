@@ -1,7 +1,0 @@
-perspective 'Full Model'
-	perspectiveTable Orders
-	perspectiveTable Returns
-	perspectiveTable People
-	perspectiveTable Calendar
-	perspectiveTable 'Top Customers'
-	perspectiveTable 'Profit Bin Size'

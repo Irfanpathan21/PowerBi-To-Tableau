@@ -214,6 +214,9 @@ class PowerBIProjectGenerator:
     
     def __init__(self, output_dir='artifacts/powerbi_projects/'):
         self.output_dir = os.path.abspath(output_dir)
+        self._relationship_inference_cache = {}
+        self._fidelity_preprocess_summary = {}
+        self._equivalence_report = None
         
         os.makedirs(self.output_dir, exist_ok=True)
     
@@ -253,6 +256,9 @@ class PowerBIProjectGenerator:
         self._incremental_refresh = incremental_refresh
         self._incremental_refresh_months = incremental_refresh_months
         self._parameterize = parameterize
+
+        # Preprocess model metadata using optional fidelity enhancers.
+        converted_objects = self._preprocess_for_fidelity(report_name, converted_objects)
         
         # Detect datasource-only mode (.tds â€” no worksheets/dashboards)
         self._datasource_only = not bool(
@@ -274,7 +280,7 @@ class PowerBIProjectGenerator:
         
         # 3. Create the Report structure (skip for datasource-only .tds migrations)
         has_visuals = bool(converted_objects.get('worksheets') or converted_objects.get('dashboards'))
-        if self._output_format in ('pbip', 'pbir') and has_visuals:
+        if self._output_format in ('pbip', 'pbir'):
             report_dir = self.create_report_structure(project_dir, report_name, converted_objects)
             print(f"  âœ“ Report created: {report_dir}")
         elif not has_visuals:
@@ -291,11 +297,161 @@ class PowerBIProjectGenerator:
         
         # 6. Generate post-migration automation artifacts
         self._generate_automation_artifacts(project_dir, report_name, converted_objects)
+
+        # 7. Equivalence report (best-effort, non-blocking)
+        self._run_equivalence_checks(project_dir, report_name, converted_objects)
         
         print(f"\nâœ… Power BI Project generated: {project_dir}")
         print(f"   ðŸ“‚ Open in Power BI Desktop: {pbip_file}")
         
         return project_dir
+
+    def _preprocess_for_fidelity(self, report_name, converted_objects):
+        """Apply optional fidelity preprocessors before generation.
+
+        This step is intentionally best-effort: failures are logged and ignored
+        so core generation remains stable.
+        """
+        summary = {
+            'dual_axis_upgrades': 0,
+            'reference_lines_normalized': 0,
+            'relationships_inferred': 0,
+        }
+
+        try:
+            from powerbi_import.dual_axis_and_reference_lines import (
+                DualAxisBuilder,
+                ReferenceLineBuilder,
+            )
+        except Exception:
+            DualAxisBuilder = None
+            ReferenceLineBuilder = None
+
+        try:
+            from powerbi_import.relationship_inference_v2 import RelationshipInferenceEngine
+        except Exception:
+            RelationshipInferenceEngine = None
+
+        worksheets = converted_objects.get('worksheets', []) or []
+        if DualAxisBuilder and ReferenceLineBuilder:
+            for ws in worksheets:
+                try:
+                    if DualAxisBuilder.detect_dual_axis_worksheet(ws):
+                        if ws.get('chart_type') not in (
+                            'lineClusteredColumnComboChart',
+                            'lineStackedColumnComboChart',
+                        ):
+                            ws['chart_type'] = 'lineClusteredColumnComboChart'
+                            summary['dual_axis_upgrades'] += 1
+
+                        combo = DualAxisBuilder.build_combo_chart_config(ws)
+                        ws['_dual_axis_combo'] = DualAxisBuilder.inject_combo_axis_formatting(
+                            combo,
+                            DualAxisBuilder.extract_axis_config(ws, 0),
+                            DualAxisBuilder.extract_axis_config(ws, 1),
+                        )
+
+                    refs = ReferenceLineBuilder.extract_reference_lines(ws)
+                    if refs:
+                        ws['_pbi_reference_lines'] = [
+                            ReferenceLineBuilder.build_pbi_reference_line_config(ref)
+                            for ref in refs
+                        ]
+                        summary['reference_lines_normalized'] += len(refs)
+                except Exception:
+                    continue
+
+        datasources = converted_objects.get('datasources', []) or []
+        if RelationshipInferenceEngine:
+            for ds in datasources:
+                tables = ds.get('tables', []) or []
+                if len(tables) < 2:
+                    continue
+
+                sig = tuple(
+                    sorted(
+                        (
+                            t.get('name', ''),
+                            tuple(sorted(c.get('name', '') for c in t.get('columns', []) or [])),
+                        )
+                        for t in tables
+                    )
+                )
+
+                if sig in self._relationship_inference_cache:
+                    inferred = self._relationship_inference_cache[sig]
+                else:
+                    engine = RelationshipInferenceEngine(verbose=False)
+                    inferred = engine.infer_relationships(tables)
+                    self._relationship_inference_cache[sig] = inferred
+
+                existing = ds.get('relationships', []) or []
+                existing_keys = set()
+                for rel in existing:
+                    left = rel.get('left', {})
+                    right = rel.get('right', {})
+                    from_t = rel.get('fromTable') or left.get('table')
+                    from_c = rel.get('fromColumn') or left.get('column')
+                    to_t = rel.get('toTable') or right.get('table')
+                    to_c = rel.get('toColumn') or right.get('column')
+                    if from_t and from_c and to_t and to_c:
+                        existing_keys.add((from_t, from_c, to_t, to_c))
+
+                added = 0
+                for rel in inferred:
+                    key = (rel.get('fromTable'), rel.get('fromColumn'), rel.get('toTable'), rel.get('toColumn'))
+                    if key in existing_keys:
+                        continue
+                    existing.append(
+                        {
+                            'left': {'table': rel.get('fromTable'), 'column': rel.get('fromColumn')},
+                            'right': {'table': rel.get('toTable'), 'column': rel.get('toColumn')},
+                            'type': 'left',
+                            'inferred': True,
+                            'confidence': rel.get('confidence', 0.0),
+                        }
+                    )
+                    existing_keys.add(key)
+                    added += 1
+
+                if added:
+                    ds['relationships'] = existing
+                    summary['relationships_inferred'] += added
+
+        self._fidelity_preprocess_summary = summary
+        if any(summary.values()):
+            print(
+                "  ✓ Fidelity preprocess: "
+                f"{summary['dual_axis_upgrades']} dual-axis upgrades, "
+                f"{summary['reference_lines_normalized']} reference lines normalized, "
+                f"{summary['relationships_inferred']} inferred relationships"
+            )
+
+        return converted_objects
+
+    def _run_equivalence_checks(self, project_dir, report_name, converted_objects):
+        """Run v2 equivalence checks and persist a JSON report (best-effort)."""
+        try:
+            from powerbi_import.equivalence_tester_v2 import run_full_equivalence_suite
+        except Exception:
+            return
+
+        try:
+            report = run_full_equivalence_suite(
+                converted_objects,
+                {'project_dir': project_dir, 'report_name': report_name},
+                verbose=False,
+            )
+            self._equivalence_report = report
+            output_path = os.path.join(project_dir, 'equivalence_report_v2.json')
+            _write_json(output_path, report, ensure_ascii=False)
+            print(
+                "  ✓ Equivalence v2: "
+                f"{report.get('fidelity_percent', 0):.1f}% "
+                f"({report.get('passed', 0)}/{report.get('total', 0)} checks)"
+            )
+        except Exception as exc:
+            logger.debug("Equivalence v2 skipped: %s", exc)
     
     def create_pbip_file(self, project_dir, report_name):
         """Creates the main .pbip file â€” format identical to PBI Hero reference"""

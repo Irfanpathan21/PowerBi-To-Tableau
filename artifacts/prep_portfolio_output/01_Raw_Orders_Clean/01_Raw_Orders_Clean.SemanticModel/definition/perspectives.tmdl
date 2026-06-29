@@ -1,3 +1,0 @@
-perspective 'Full Model'
-	perspectiveTable Orders_Clean
-	perspectiveTable Calendar

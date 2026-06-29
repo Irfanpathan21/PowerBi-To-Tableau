@@ -1,4 +1,0 @@
-perspective 'Full Model'
-	perspectiveTable Inventory_Levels
-	perspectiveTable Inventory_Status
-	perspectiveTable Calendar

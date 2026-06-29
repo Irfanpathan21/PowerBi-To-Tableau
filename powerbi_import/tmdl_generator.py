@@ -1172,6 +1172,41 @@ def _self_heal_model(model, recovery=None):
         re.IGNORECASE
     )
     _TABLE_COL_RE = re.compile(r"'((?:[^']|'')+)'\[([^\]]+)\]")
+    
+    # Phase 11: Enhanced many-to-many detection via column name similarity
+    #           Improves on Phase 10 by scoring column overlap (Jaccard)
+    def _similarity_score(from_cols, to_cols):
+        """Compute Jaccard similarity between column sets."""
+        from_set = {c.lower() for c in from_cols}
+        to_set = {c.lower() for c in to_cols}
+        if not from_set or not to_set:
+            return 0.0
+        intersection = len(from_set & to_set)
+        union = len(from_set | to_set)
+        return intersection / union if union > 0 else 0.0
+    
+    # Upgrade manyToOne to manyToMany if overlap is high (>80%) and table sizes are similar
+    for rel in relationships:
+        if rel.get('cardinality') != 'manyToOne':
+            continue
+        from_table_name = rel.get('fromTable')
+        to_table_name = rel.get('toTable')
+        from_tbl = next((t for t in tables if t.get('name') == from_table_name), None)
+        to_tbl = next((t for t in tables if t.get('name') == to_table_name), None)
+        if not from_tbl or not to_tbl:
+            continue
+        
+        from_cols = {c.get('name', '') for c in from_tbl.get('columns', []) if c.get('name')}
+        to_cols = {c.get('name', '') for c in to_tbl.get('columns', []) if c.get('name')}
+        similarity = _similarity_score(from_cols, to_cols)
+        from_size = len(from_cols)
+        to_size = len(to_cols)
+        size_ratio = min(to_size, from_size) / max(to_size, from_size) if max(to_size, from_size) > 0 else 0.0
+        
+        # If >80% column overlap and tables have similar width, likely peer tables (many-to-many)
+        if similarity > 0.80 and size_ratio > 0.70:
+            rel['cardinality'] = 'manyToMany'
+            print(f"  ⚕ Phase 11: Upgraded '{from_table_name}' → '{to_table_name}' to manyToMany (overlap={similarity:.0%})")
 
     for t in model.get('model', {}).get('tables', []):
         tname = t.get('name', '')
@@ -2653,6 +2688,48 @@ def _apply_semantic_enrichments(model, extra_objects, main_table_name, column_ta
             unique_measures.append(measure)
         table["measures"] = unique_measures
 
+    # Deduplicate columns globally with case-insensitive uniqueness (Bug #2b).
+    # Column names within a table must also be unique case-insensitively.
+    # When internal apostrophes create duplicates (e.g. 'Date d\'émission' becomes
+    # 'Date d\'' due to truncation), deduplicate case-insensitively within each table.
+    for table in model["model"]["tables"]:
+        tname = table.get("name", "")
+        seen_cols = {}  # casefold → original column dict
+        unique_cols = []
+        for col in table.get("columns", []):
+            cname = col.get("name", "")
+            key = cname.casefold()
+            if key in seen_cols:
+                # Duplicate column name (case-insensitive) → skip
+                print(f"  ⚕ Self-heal: Dropped duplicate column '{cname}' in '{tname}'")
+                continue
+            seen_cols[key] = col
+            unique_cols.append(col)
+        table["columns"] = unique_cols
+
+    # Bug #22: Detect measure/column name collisions (case-insensitive)
+    # Power BI forbids the same name (case-insensitive) for a measure and column → model fails to load
+    all_column_names = {}  # casefold → (table_name, column_name)
+    for table in model["model"]["tables"]:
+        tname = table.get("name", "")
+        for col in table.get("columns", []):
+            cname = col.get("name", "")
+            key = cname.casefold()
+            if key not in all_column_names:
+                all_column_names[key] = (tname, cname)
+    
+    # Check measures against column names
+    for table in model["model"]["tables"]:
+        tname = table.get("name", "")
+        for measure in table.get("measures", []):
+            mname = measure.get("name", "")
+            key = mname.casefold()
+            if key in all_column_names:
+                col_table, col_name = all_column_names[key]
+                new_name = f"{mname} (Measure)"
+                measure["name"] = new_name
+                print(f"  ⚕ Self-heal: Renamed measure '{mname}' → '{new_name}' (collision with column '{col_name}' in '{col_table}')")
+
     # Phase 12: Auto-generate perspectives from table list
     all_table_names = [t.get('name', '') for t in model["model"]["tables"]]
     model["model"]["perspectives"] = [{
@@ -3981,11 +4058,12 @@ def _fix_related_for_many_to_many(model):
         for col in table.get('columns', []):
             expr = col.get('expression', '')
             if expr and 'RELATED(' in expr:
-                # Use CALCULATE(SELECTEDVALUE(...)) for calc columns —
-                # works for all types including Boolean (unlike MIN/MAX).
+                # Bug #21 fix: Use LOOKUPVALUE() for calc columns, not CALCULATE(SELECTEDVALUE())
+                # CALCULATE() doesn't work in row context (calc column context).
+                # LOOKUPVALUE() works in both row and filter context and supports all types.
                 col['expression'] = _replace_related_with_lookupvalue(
                     expr, m2m_pairs, current_table,
-                    use_calculate_selectedvalue=True)
+                    use_calculate_selectedvalue=False)
         for measure in table.get('measures', []):
             expr = measure.get('expression', '')
             if expr and 'RELATED(' in expr:

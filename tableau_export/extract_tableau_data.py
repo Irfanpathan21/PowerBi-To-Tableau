@@ -278,6 +278,8 @@ class TableauExtractor:
         self.extract_dashboards(root)
         self.extract_datasources(root)
         self.extract_calculations(root)
+        # Bug #6: Resolve cross-datasource calculation ID references
+        self._resolve_cross_datasource_calcs()
         self.extract_parameters(root)
         self.extract_filters(root)
         self.extract_stories(root)
@@ -538,6 +540,87 @@ class TableauExtractor:
         
         self.workbook_data['calculations'] = calculations
         print(f"  ✓ {len(calculations)} calculations extracted")
+    
+    def _resolve_cross_datasource_calcs(self):
+        """Bug #6: Resolve cross-datasource calculation ID references.
+        
+        When calculations reference other calculations via [Calculation_NNNNNNNNNNNNNNNN]
+        (18-digit ID suffix), attempt to resolve to the actual calculation name using
+        a 3-stage fallback:
+        1. Look in the same datasource
+        2. If not found, search all datasources by suffix match
+        3. If still not found, try by calculation name
+        
+        Impact: Recovers calculations skipped in multi-datasource workbooks (DPN, OGDAA, etc.)
+        """
+        # Build a map of all calculation IDs across all datasources
+        # ID suffix -> (datasource_name, calc_name, calc_obj)
+        all_calc_ids = {}  # suffix (18 digits) -> (ds_name, calc_name, calc)
+        all_calc_names = {}  # calc_name -> (ds_name, calc)
+        
+        for ds in self.workbook_data.get('datasources', []):
+            ds_name = ds.get('name', '')
+            for calc in ds.get('calculations', []):
+                calc_name = calc.get('name', '')
+                # Extract the 18-digit ID suffix if present
+                match = re.search(r'_(\d{18})$', calc_name)
+                if match:
+                    suffix = match.group(1)
+                    all_calc_ids[suffix] = (ds_name, calc_name, calc)
+                # Also map by name (without ID) for fallback
+                clean_name = re.sub(r'_\d{18}$', '', calc_name)
+                if clean_name not in all_calc_names:
+                    all_calc_names[clean_name] = (ds_name, calc)
+        
+        # Now resolve references in all calculation formulas
+        formula_resolution_count = 0
+        for ds in self.workbook_data.get('datasources', []):
+            ds_name = ds.get('name', '')
+            for calc in ds.get('calculations', []):
+                formula = calc.get('formula', '')
+                if not formula:
+                    continue
+                
+                # Find all [Calculation_NNNNNNNNNNNNNNNN] patterns
+                def resolve_calc_ref(match):
+                    nonlocal formula_resolution_count
+                    ref_name = match.group(1).strip('[]')
+                    
+                    # Stage 1: Look in same datasource
+                    for local_calc in ds.get('calculations', []):
+                        if local_calc.get('name', '') == ref_name:
+                            return match.group(0)  # Already found locally
+                    
+                    # Stage 2: Extract suffix and search cross-datasource
+                    suffix_match = re.search(r'_(\d{18})$', ref_name)
+                    if suffix_match:
+                        suffix = suffix_match.group(1)
+                        if suffix in all_calc_ids:
+                            resolved_ds, resolved_name, _ = all_calc_ids[suffix]
+                            if resolved_name != ref_name:
+                                formula_resolution_count += 1
+                                print(f"  ⚕ Self-heal: Resolved cross-datasource calc '{ref_name}' → '{resolved_name}' (from '{resolved_ds}')")
+                                return f"[{resolved_name}]"
+                    
+                    # Stage 3: Try by calculation name (strip suffix)
+                    clean_ref = re.sub(r'_\d{18}$', '', ref_name)
+                    if clean_ref in all_calc_names:
+                        resolved_ds, _ = all_calc_names[clean_ref]
+                        resolved_name = clean_ref
+                        formula_resolution_count += 1
+                        print(f"  ⚕ Self-heal: Resolved calculation name '{ref_name}' → '{resolved_name}' (from '{resolved_ds}')")
+                        return f"[{resolved_name}]"
+                    
+                    # Not found — return unchanged
+                    return match.group(0)
+                
+                # Apply resolution to all [Calculation_...] references
+                updated_formula = re.sub(r'\[([Cc]alculation_[^\]]*)\]', resolve_calc_ref, formula)
+                if updated_formula != formula:
+                    calc['formula'] = updated_formula
+        
+        if formula_resolution_count > 0:
+            print(f"  ✓ {formula_resolution_count} cross-datasource calculation references resolved")
     
     def extract_parameters(self, root):
         """Extracts parameters (deduplicated by name).

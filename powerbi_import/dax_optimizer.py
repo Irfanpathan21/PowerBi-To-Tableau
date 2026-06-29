@@ -385,7 +385,7 @@ def build_measure_dependency_dag(measures):
     circular = []
     visited = set()
     rec_stack = set()
-
+    
     def _dfs(node, path):
         visited.add(node)
         rec_stack.add(node)
@@ -397,6 +397,61 @@ def build_measure_dependency_dag(measures):
             elif neighbor not in visited:
                 _dfs(neighbor, path + [neighbor])
         rec_stack.discard(node)
+    
+    for node in graph:
+        if node not in visited:
+            _dfs(node, [node])
+    
+    # Find unused measures (never referenced by others)
+    referenced = {tgt for _, tgt in edges}
+    unused = [m for m in measure_names if m not in referenced]
+    
+    # Find root measures (no dependencies)
+    roots = [m for m in measure_names if not graph.get(m)]
+    
+    return {
+        'edges': edges,
+        'circular': circular,
+        'unused': unused,
+        'roots': roots,
+        'graph': graph,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════
+#  ADVANCED DAX PATTERNS
+# ════════════════════════════════════════════════════════════════════
+
+def detect_lod_patterns(formula):
+    """Detect Level-of-Detail patterns in DAX formulas.
+    
+    Returns dict with:
+    - has_allexcept: True if ALLEXCEPT is used (LOD INCLUDE pattern)
+    - has_removefilters: True if REMOVEFILTERS is used (LOD EXCLUDE pattern)
+    - has_all: True if ALL() is used (simplified LOD EXCLUDE)
+    - has_calculate: True if CALCULATE is used (basic aggregation modification)
+    """
+    return {
+        'has_allexcept': bool(re.search(r'ALLEXCEPT\s*\(', formula, re.IGNORECASE)),
+        'has_removefilters': bool(re.search(r'REMOVEFILTERS\s*\(', formula, re.IGNORECASE)),
+        'has_all': bool(re.search(r'\bALL\s*\(', formula, re.IGNORECASE)),
+        'has_calculate': bool(re.search(r'CALCULATE\s*\(', formula, re.IGNORECASE)),
+        'has_running_sum': bool(re.search(r'RUNNING_SUM|SUMX.*EARLIER', formula, re.IGNORECASE)),
+    }
+
+
+def enhance_lod_exclude_accuracy(formula):
+    """Improve LOD {EXCLUDE} accuracy by detecting multi-field exclusions.
+    
+    {EXCLUDE [Dim1], [Dim2]} → CALCULATE(AGG, REMOVEFILTERS([Dim1], [Dim2]))
+    """
+    # If formula uses ALL() on multiple tables/columns, upgrade to REMOVEFILTERS
+    all_count = len(re.findall(r'\bALL\s*\(', formula, re.IGNORECASE))
+    if all_count > 1:
+        # Multiple ALL() calls suggest LOD EXCLUDE on multiple dimensions
+        # Upgrade pattern is handled case-by-case in conversion
+        return formula.replace('ALL(', 'REMOVEFILTERS(', 1)  # At least improve first one
+    return formula
 
     for m_name in graph:
         if m_name not in visited:

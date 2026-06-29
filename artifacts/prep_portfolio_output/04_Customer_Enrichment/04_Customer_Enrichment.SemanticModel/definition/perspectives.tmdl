@@ -1,4 +1,0 @@
-perspective 'Full Model'
-	perspectiveTable Demographics
-	perspectiveTable Customer_360
-	perspectiveTable Calendar

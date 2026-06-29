@@ -34,7 +34,7 @@
    "page": "Financial Overview",
    "title_font": "",
    "title_size": "",
-   "type": "lineChart",
+   "type": "lineClusteredColumnComboChart",
    "width": 1040,
    "x": 0,
    "y": 144,
