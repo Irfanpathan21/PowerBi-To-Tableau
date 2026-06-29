@@ -189,7 +189,7 @@ bar, line, pie, scatter, map, treemap, waterfall, funnel, gauge, KPI, box plot, 
 </td>
 <td>
 
-### 🔌 79 Data Connectors
+### 🔌 87 Data Connectors
 Generates Power Query M for:
 SQL Server, PostgreSQL, BigQuery, Snowflake, Oracle, MySQL, Databricks, SAP HANA, Excel, CSV, SharePoint, Salesforce, Web, OData, Azure Blob, Vertica, Impala, Presto, Fabric Lakehouse, MongoDB, Cosmos DB, Athena, DB2, ServiceNow, Denodo, Essbase, Splunk, and more
 
@@ -698,7 +698,7 @@ TableauToPowerBI/
 │   ├── schema_drift.py                        #   Schema drift detection (v28)
 │   └── deploy/                                #   Deploy to PBI Service / Fabric
 ├── Dockerfile                                 # Docker image for API server
-├── tests/                                     # 9,071 tests in latest full run
+├── tests/                                     # 9,150+ tests in latest full run
 ├── docs/                                      # 18 documentation files
 └── examples/                                  # Sample Tableau workbooks
 ```

@@ -145,6 +145,8 @@ For environments without Mermaid rendering:
 | `visual_generator.py` | Visual container generator (190 visual types, data roles, config templates) |
 | `m_query_generator.py` | Sample data M query generator |
 | `validator.py` | Artifact validator (JSON, TMDL, DAX semantic validation) |
+| `qa_suite.py` | Post-migration QA report card (sentinels, empty visuals, format coverage, zones, orphan filters, fidelity) |
+| `scripts/autoplay.py` | Batch autoplay runner for post-migration validation and artifact QA summaries |
 | `migration_report.py` | Per-item fidelity tracking and migration status reporting |
 | `shared_model.py` | Multi-workbook merge engine: fingerprint-based table matching, column overlap scoring, measure/column/parameter conflict resolution |
 | `merge_assessment.py` | Merge assessment reporter: JSON + console output, scoring (0–100), merge/partial/separate recommendation |
