@@ -4,38 +4,39 @@ Wraps cProfile around the extraction → generation pipeline and outputs:
     1. A text summary (top 40 cumulative-time functions)
     2. A .prof binary for snakeviz / flamegraph
     3. Optionally a flamegraph SVG (requires flameprof: pip install flameprof)
+    4. Optionally peak Python allocation with --memory
 
 Usage:
     py scripts/profile_migration.py                         # default large_500 fixture
     py scripts/profile_migration.py path/to/workbook.twb    # custom workbook
     py scripts/profile_migration.py --flamegraph             # also generate SVG
     py scripts/profile_migration.py --top 60                 # show top 60 functions
+    py scripts/profile_migration.py --memory                 # add traced peak allocation
 """
 
 import argparse
 import cProfile
 import os
 import pstats
-import shutil
 import sys
-import tempfile
 import time
 import tracemalloc
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, 'tableau_export'))
+sys.path.insert(0, os.path.join(ROOT, 'powerbi_import'))
 
 
 def _run_pipeline(twb_path, extract_dir, gen_dir):
     """Run extraction + generation, return elapsed seconds."""
-    from tableau_export.extract_tableau_data import TableauExtractor
     from powerbi_import.import_to_powerbi import PowerBIImporter
+    from tableau_export.extract_tableau_data import TableauExtractor
 
     t0 = time.perf_counter()
 
     ext = TableauExtractor(twb_path, output_dir=extract_dir)
     ext.extract_all()
-    ext.save_extractions()
 
     imp = PowerBIImporter(source_dir=extract_dir)
     imp.import_all(generate_pbip=True, report_name='Profile', output_dir=gen_dir)
@@ -51,6 +52,8 @@ def main():
                         help='Number of top functions to display')
     parser.add_argument('--flamegraph', action='store_true',
                         help='Generate flamegraph SVG (requires flameprof)')
+    parser.add_argument('--memory', action='store_true',
+                        help='Also trace peak Python allocation (slows CPU profile)')
     parser.add_argument('--output', default='profile_results',
                         help='Output directory for profile data')
     parser.add_argument('--measures', type=int, default=500,
@@ -88,21 +91,26 @@ def main():
 
     # Profile
     prof_path = os.path.join(args.output, 'migration.prof')
-    print(f'\nProfiling pipeline...')
+    print('\nProfiling pipeline...')
 
-    tracemalloc.start()
+    if args.memory:
+        tracemalloc.start()
     profiler = cProfile.Profile()
     profiler.enable()
 
     elapsed = _run_pipeline(twb_path, extract_dir, gen_dir)
 
     profiler.disable()
-    _, peak_bytes = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
+    peak_bytes = None
+    if args.memory:
+        _, peak_bytes = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
 
-    peak_mb = peak_bytes / (1024 * 1024)
     print(f'\n{"="*70}')
-    print(f'Pipeline completed in {elapsed:.2f}s | Peak memory: {peak_mb:.1f} MB')
+    summary = f'Pipeline completed in {elapsed:.2f}s'
+    if peak_bytes is not None:
+        summary += f' | Peak traced allocation: {peak_bytes / (1024 * 1024):.1f} MB'
+    print(summary)
     print(f'{"="*70}')
 
     # Save binary profile

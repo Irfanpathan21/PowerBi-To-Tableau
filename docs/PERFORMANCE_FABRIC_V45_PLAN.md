@@ -97,6 +97,32 @@ pass a performance benchmark.
 `Complex_Enterprise` and `Enterprise_Sales`; no optimization starts from wall-clock
 speculation alone.
 
+### Sprint 222 measured baseline
+
+Measured on Windows 11, CPython 3.14.2, AMD64, with one warm-up and three
+isolated timing runs. Baseline schema v2 measures timing without `tracemalloc`,
+then performs one additional memory-only run. Peak figures are Python traced
+allocations, not process RSS.
+
+| Fixture | Extract median | Generate median | Total median | p95 | Variation | Status |
+|---|---:|---:|---:|---:|---:|---|
+| `Enterprise_Sales.twb` PBIP, traced v1 | 0.080 s | 0.656 s | 0.732 s | 0.880 s | 27.87% | Historical only: timing included tracing overhead |
+| `Complex_Enterprise.twb` PBIP, traced v1 | 0.161 s | 1.585 s | 1.742 s | 1.916 s | 12.02% | Historical only: timing included tracing overhead |
+| `Complex_Enterprise.twb` PBIP, untraced v2 | 0.067 s | 1.239 s | 1.294 s | 1.386 s | 11.64% | Stable reference |
+| `Superstore_Sales.twb` Fabric control run | 0.073 s | 0.771 s | 0.844 s | 0.844 s | n/a | Six local artifacts validated; single run only |
+
+The stable v2 fixture attributes about 96% of measured wall time to PBIP generation,
+so Sprint 223 must profile TMDL/PBIR generation before considering XML extraction
+pass reduction. The scheduled/manual CI job retains PBIP and Fabric JSON baselines;
+historical trend comparison remains pending until the first Linux reference series
+has been collected.
+
+A controlled experiment parallelizing the 21 small JSON reads in report
+self-healing increased the instrumented pipeline from about 3.75 s to 4.35 s due
+to thread overhead. The change was reverted; all 25 report healers remain enabled.
+CPU profiling now leaves `tracemalloc` disabled by default and exposes it only via
+`scripts/profile_migration.py --memory`.
+
 ## 4. Sprint 223: Hot-Path Optimization
 
 **Owners:** @extractor, @dax, @semantic, @visual, @orchestrator

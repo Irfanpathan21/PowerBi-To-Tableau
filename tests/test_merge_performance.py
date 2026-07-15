@@ -1,20 +1,21 @@
 """Benchmark tests for merge performance at scale.
 
-Run with: pytest tests/test_merge_performance.py -v --benchmark
-Not run in CI — requires explicit --benchmark flag.
+PowerShell:
+    $env:RUN_BENCHMARKS = "1"
+    ./.venv/Scripts/python.exe -m pytest tests/test_merge_performance.py -v
+
+Not run in CI by default; requires RUN_BENCHMARKS=1.
 """
 
-import copy
 import os
 import sys
 import time
 import unittest
-import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-# Skip entire module unless --benchmark is passed
-_RUN_BENCHMARKS = '--benchmark' in sys.argv or os.environ.get('RUN_BENCHMARKS') == '1'
+# Skip the module unless benchmarks are explicitly enabled.
+_RUN_BENCHMARKS = os.environ.get('RUN_BENCHMARKS') == '1'
 
 
 def _generate_workbook(wb_index, num_tables=3, cols_per_table=5):
@@ -117,7 +118,7 @@ def _generate_workbooks(n, num_tables=3, cols_per_table=5):
     return names, objects_list
 
 
-@unittest.skipUnless(_RUN_BENCHMARKS, "Benchmark tests require --benchmark flag or RUN_BENCHMARKS=1")
+@unittest.skipUnless(_RUN_BENCHMARKS, "Benchmark tests require RUN_BENCHMARKS=1")
 class TestMergePerformance(unittest.TestCase):
     """Performance benchmarks for merge operations at scale."""
 
@@ -233,7 +234,9 @@ class TestMergePerformance(unittest.TestCase):
     def test_merge_manifest_at_scale(self):
         """Merge manifest can be built for large merge."""
         from powerbi_import.shared_model import (
-            assess_merge, merge_semantic_models, build_merge_manifest,
+            assess_merge,
+            build_merge_manifest,
+            merge_semantic_models,
         )
 
         names, objects_list = _generate_workbooks(25, num_tables=3)
@@ -256,14 +259,14 @@ class TestMergePerformance(unittest.TestCase):
         self.assertLess(elapsed, 2.0, f"Manifest build took {elapsed:.2f}s (>2s)")
 
 
-@unittest.skipUnless(_RUN_BENCHMARKS, "Benchmark tests require --benchmark flag or RUN_BENCHMARKS=1")
+@unittest.skipUnless(_RUN_BENCHMARKS, "Benchmark tests require RUN_BENCHMARKS=1")
 class TestGlobalAssessmentPerformance(unittest.TestCase):
     """Performance benchmarks for global (cross-workbook) assessment."""
 
     def test_global_assessment_20_workbooks(self):
         """Global assessment pairwise comparison for 20 workbooks."""
-        from powerbi_import.shared_model import build_table_fingerprints
         from powerbi_import.global_assessment import _find_shared_table_names_cached
+        from powerbi_import.shared_model import build_table_fingerprints
 
         names, objects_list = _generate_workbooks(20, num_tables=5)
 
@@ -276,7 +279,7 @@ class TestGlobalAssessmentPerformance(unittest.TestCase):
         pairs = 0
         for i in range(len(names)):
             for j in range(i + 1, len(names)):
-                shared = _find_shared_table_names_cached(fp_cache[i], fp_cache[j])
+                _find_shared_table_names_cached(fp_cache[i], fp_cache[j])
                 pairs += 1
         elapsed = time.perf_counter() - start
 

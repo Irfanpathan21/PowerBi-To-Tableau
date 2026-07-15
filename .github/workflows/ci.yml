@@ -5,10 +5,14 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
 
 jobs:
   # ───────────────────── Stage 1: Lint ─────────────────────
   lint:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -141,6 +145,39 @@ jobs:
               sys.exit(1)
           print(f'PASS: {per_op:.3f} ms/op within {threshold} ms threshold')
           "
+
+  # ───────────── Scheduled/manual performance baseline ─────────────
+  performance-baseline:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      TTPBI_TELEMETRY: "0"
+      TTPBI_TELEMETRY_ENDPOINT: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run PBIP reference baselines
+        run: |
+          mkdir -p performance-results
+          python scripts/run_perf_baseline.py examples/tableau_samples/Enterprise_Sales.twb --runs 3 --warmup 1 --output performance-results/enterprise-pbip.json
+          python scripts/run_perf_baseline.py examples/tableau_samples/Complex_Enterprise.twb --runs 3 --warmup 1 --output performance-results/complex-pbip.json
+
+      - name: Run Fabric reference baseline
+        run: |
+          python scripts/run_perf_baseline.py examples/tableau_samples/Complex_Enterprise.twb --format fabric --runs 3 --warmup 1 --output performance-results/complex-fabric.json
+
+      - name: Upload performance baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-baseline-${{ github.run_id }}
+          path: performance-results/*.json
+          retention-days: 30
 
   # ───────────────────── Stage 3: Validate ─────────────────
   validate:
