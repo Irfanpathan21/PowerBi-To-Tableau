@@ -14,6 +14,7 @@ import tempfile
 import unittest
 import zipfile
 import xml.etree.ElementTree as ET
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -26,6 +27,7 @@ from extract_tableau_data import (
     _split_sql_values,
     _scan_delimited_sample,
 )
+import extract_tableau_data as etd
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -137,6 +139,22 @@ class TestReadTableauFile(unittest.TestCase):
                 f.write('hello')
             ext = TableauExtractor(bad, output_dir=d)
             self.assertIsNone(ext.read_tableau_file())
+
+
+class TestRootNodeCache(unittest.TestCase):
+    def test_findall_root_cached_uses_single_scan_per_xpath(self):
+        ext = _make_extractor()
+        root = ET.fromstring(
+            '<workbook><worksheet name="A"/><worksheet name="B"/></workbook>'
+        )
+
+        with patch.object(etd, 'safe_findall', wraps=etd.safe_findall) as mock_findall:
+            first = ext._findall_root_cached(root, './/worksheet')
+            second = ext._findall_root_cached(root, './/worksheet')
+
+        self.assertEqual(len(first), 2)
+        self.assertIs(first, second)
+        self.assertEqual(mock_findall.call_count, 1)
 
 
 # ═══════════════════════════════════════════════════════════════════

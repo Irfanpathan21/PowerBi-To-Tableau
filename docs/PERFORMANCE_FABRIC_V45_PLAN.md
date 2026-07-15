@@ -144,7 +144,7 @@ priority order:
 
 | Item | Candidate files | Change | Acceptance criteria |
 |---|---|---|---|
-| 223.1 Extraction pass reduction | `extract_tableau_data.py`, `datasource_extractor.py` | Cache XML indexes or pilot `iterparse` for the largest independent sections | At least 25% extraction-time reduction on the dominant fixture; identical 23 JSON outputs modulo ordering/timestamps |
+| 223.1 Extraction pass reduction (in progress) | `extract_tableau_data.py`, `datasource_extractor.py` | Cache XML indexes or pilot `iterparse` for the largest independent sections | At least 25% extraction-time reduction on the dominant fixture; identical 23 JSON outputs modulo ordering/timestamps |
 | 223.2 DAX conversion reuse | `dax_converter.py`, `tmdl_generator.py` | Cache conversion by formula plus context; avoid repeated validation/conversion of identical expressions | Cache hit rate reported; DAX snapshots unchanged |
 | 223.3 Relationship lookup indexes | `tmdl_generator.py` | Pre-index tables/columns and cache repeated relationship candidates | Relationship phase under 2 s for the 50-table synthetic model |
 | 223.4 PBIR write batching | `pbip_generator.py`, `visual_generator.py` | Avoid repeated serialization and directory scans | Visual output byte-equivalent after normalized volatile fields |
@@ -158,6 +158,13 @@ priority order:
 - No measured PBIP or Fabric fixture regresses by more than 10%.
 - Peak memory does not exceed the current fixture baseline or 500 MB, whichever is
   lower, for standard performance fixtures.
+
+Sprint 223.1 has started with a low-risk root-level XML node cache in the
+Tableau extractor (`.//datasource`, `.//worksheet`, `.//dashboard`, and related
+global scans). This removes repeated full-tree scans across extraction phases
+without changing extraction semantics. Regression coverage remains green for
+extractor and performance suites (221 tests), and a probe baseline on
+`Complex_Enterprise.twb` reports PBIP median 1.221 s (3 measured runs, 1 warm-up).
 
 ## 5. Sprint 224: True Direct Lake and Cross-Artifact Contract
 

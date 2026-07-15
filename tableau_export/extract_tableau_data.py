@@ -238,8 +238,20 @@ class TableauExtractor:
         self.workbook_data = {}
         self.extraction_warnings = []
         self.hyper_max_rows = hyper_max_rows or 20
+        self._xml_node_cache = {}
         
         os.makedirs(self.output_dir, exist_ok=True)
+
+    def _clear_xml_node_cache(self):
+        """Reset per-workbook XML node cache used by repeated root scans."""
+        self._xml_node_cache = {}
+
+    def _findall_root_cached(self, root, xpath):
+        """Return cached ``safe_findall`` results for repeated root-level queries."""
+        root_cache = self._xml_node_cache.setdefault(id(root), {})
+        if xpath not in root_cache:
+            root_cache[xpath] = safe_findall(root, xpath)
+        return root_cache[xpath]
 
     def _warn_extraction(self, code, message, context=''):
         """Record a non-fatal extraction warning for diagnostics."""
@@ -272,6 +284,8 @@ class TableauExtractor:
             ds_parent = ET.SubElement(wrapper, 'datasources')
             ds_parent.append(root)
             root = wrapper
+
+        self._clear_xml_node_cache()
         
         # Extract the different objects
         self.extract_worksheets(root)
@@ -360,7 +374,7 @@ class TableauExtractor:
         
         worksheets = []
         
-        for worksheet in safe_findall(root, './/worksheet'):
+        for worksheet in self._findall_root_cached(root, './/worksheet'):
             ws_data = {
             'name': safe_get_attr(worksheet, 'name', ''),
                 'title': self._extract_title_text(worksheet),
@@ -400,7 +414,7 @@ class TableauExtractor:
         
         dashboards = []
         
-        for dashboard in safe_findall(root, './/dashboard'):
+        for dashboard in self._findall_root_cached(root, './/dashboard'):
             size_elem = safe_find(dashboard, 'size')
             if size_elem is not None:
                 db_width = _safe_int(safe_get_attr(size_elem, 'maxwidth', safe_get_attr(size_elem, 'minwidth', '1280')))
@@ -441,7 +455,7 @@ class TableauExtractor:
         
         raw_datasources = []
         
-        for datasource in safe_findall(root, './/datasource'):
+        for datasource in self._findall_root_cached(root, './/datasource'):
             ds_data = extract_datasource(datasource, twbx_path=self.tableau_file)
             raw_datasources.append(ds_data)
         
@@ -481,7 +495,7 @@ class TableauExtractor:
         calculations = []
         seen_names = set()
         
-        for datasource in safe_findall(root, './/datasource'):
+        for datasource in self._findall_root_cached(root, './/datasource'):
             ds_data = extract_datasource(datasource, twbx_path=self.tableau_file)
             for calc in ds_data.get('calculations', []):
                 cname = calc.get('name', '')
@@ -500,7 +514,7 @@ class TableauExtractor:
         for ds_name, ds in ds_by_name.items():
             ds_seen[ds_name] = {c.get('name', '') for c in ds.get('calculations', [])}
 
-        for ws in safe_findall(root, './/worksheet'):
+        for ws in self._findall_root_cached(root, './/worksheet'):
             for dep in safe_findall(ws, './/datasource-dependencies'):
                 ds_ref = safe_get_attr(dep, 'datasource', '')
                 for col_elem in safe_findall(dep, 'column'):
@@ -633,7 +647,7 @@ class TableauExtractor:
         seen_names = set()
         
         # Format 1: Old-style column-based parameters
-        for param in root.findall('.//column[@param-domain-type]'):
+        for param in self._findall_root_cached(root, './/column[@param-domain-type]'):
             param_name = param.get('name', '')
             if param_name in seen_names:
                 continue
@@ -665,7 +679,7 @@ class TableauExtractor:
             parameters.append(param_data)
         
         # Format 2: New-style <parameters><parameter> elements
-        for param in root.findall('.//parameters/parameter'):
+        for param in self._findall_root_cached(root, './/parameters/parameter'):
             param_name = param.get('name', '')
             if param_name in seen_names:
                 continue
@@ -725,7 +739,7 @@ class TableauExtractor:
         
         filters = []
         
-        for filt in root.findall('.//filter'):
+        for filt in self._findall_root_cached(root, './/filter'):
             filter_data = {
                 'field': filt.get('column', ''),
                 'type': filt.get('type', ''),
@@ -801,7 +815,7 @@ class TableauExtractor:
         
         stories = []
         
-        for story in root.findall('.//story'):
+        for story in self._findall_root_cached(root, './/story'):
             story_data = {
                 'name': story.get('name', ''),
                 'title': story.findtext('.//title', ''),
@@ -2479,7 +2493,7 @@ class TableauExtractor:
         """Extracts sets (IN/OUT sets)"""
         sets = []
         
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             for col in ds.findall('.//column'):
                 # Sets have a set attribute or a <set> element
                 set_elem = col.find('.//set')
@@ -2525,7 +2539,7 @@ class TableauExtractor:
         groups = []
         seen_group_names = set()
         
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             for group_elem in ds.findall('.//group'):
                 group_name = _strip_brackets(group_elem.get('caption', group_elem.get('name', '')))
                 if not group_name:
@@ -2610,7 +2624,7 @@ class TableauExtractor:
         # Also extract categorical-bin groups from <column> elements.
         # These are defined as <column name='[X (group)]'><calculation class='categorical-bin'>
         # with <bin value='label'><value>member</value></bin> children.
-        for col_elem in root.findall('.//column'):
+        for col_elem in self._findall_root_cached(root, './/column'):
             calc_elem = col_elem.find('calculation')
             if calc_elem is None or calc_elem.get('class') != 'categorical-bin':
                 continue
@@ -2653,7 +2667,7 @@ class TableauExtractor:
         """Extracts bins (intervals)"""
         bins = []
         
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             for col in ds.findall('.//column'):
                 bin_elem = col.find('.//bin')
                 if bin_elem is not None:
@@ -2671,7 +2685,7 @@ class TableauExtractor:
         """Extracts hierarchies (drill-paths) from datasources"""
         hierarchies = []
         
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             for drill_path in ds.findall('.//drill-path'):
                 h_name = drill_path.get('name', '')
                 levels = []
@@ -2693,7 +2707,7 @@ class TableauExtractor:
         """Extracts global sort orders (datasource-level, manual, and computed sorts)"""
         sorts = []
         
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             for sort in ds.findall('.//sort'):
                 col = _strip_brackets(sort.get('column', ''))
                 direction = sort.get('direction', 'ASC')
@@ -2725,7 +2739,7 @@ class TableauExtractor:
         """Extracts aliases (display name overrides for values)"""
         aliases = {}
         
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             for col in ds.findall('.//column'):
                 col_name = _strip_brackets(col.get('name', ''))
                 aliases_elem = col.find('.//aliases')
@@ -2746,7 +2760,7 @@ class TableauExtractor:
         """Extracts custom SQL queries from datasources"""
         custom_sql = []
         
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             ds_name = ds.get('name', '')
             for relation in ds.findall('.//relation[@type=\"text\"]'):
                 query = relation.text or ''
@@ -2773,7 +2787,7 @@ class TableauExtractor:
         user_filters = []
         
         # ---- 1. Explicit user filters (<user-filter> elements) ----
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             ds_name = ds.get('caption', ds.get('name', ''))
             
             for uf in ds.findall('.//user-filter'):
@@ -2864,7 +2878,7 @@ class TableauExtractor:
         """
         ds_filters = []
 
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             ds_name = ds.get('caption', ds.get('name', ''))
             ds_raw_name = ds.get('name', '')
 
@@ -3268,7 +3282,7 @@ class TableauExtractor:
     def extract_published_datasources(self, root):
         """Extracts references to published (server-hosted) datasources."""
         pub_ds = []
-        for ds in root.findall('.//datasource'):
+        for ds in self._findall_root_cached(root, './/datasource'):
             # Published datasources have a repository-location attribute
             repo = ds.find('.//repository-location')
             if repo is not None:
