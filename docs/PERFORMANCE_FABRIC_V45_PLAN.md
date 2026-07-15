@@ -87,10 +87,10 @@ pass a performance benchmark.
 
 | Item | Files | Deliverable | Acceptance criteria |
 |---|---|---|---|
-| 222.1 Phase timers | `migrate.py`, `telemetry.py` | Timings for unzip/XML parse, extraction objects, DAX conversion, TMDL, PBIR, Fabric generators, validation, reporting | Every full run emits phase totals whose sum is within 5% of wall time |
+| 222.1 Phase timers (complete) | `telemetry.py`, PBIP/Fabric orchestrators, baseline runner | Local timings for input loading, semantic/report generation, Fabric artifacts, validation, and reporting | Full PBIP and Fabric runs emit phase totals within 5% of generation wall time |
 | 222.2 Stable benchmark runner | `scripts/profile_migration.py`, new `scripts/run_perf_baseline.py` | JSON baseline with machine/runtime metadata, median, p95, and peak memory | Repeated warm runs vary by less than 15% or are marked non-blocking |
 | 222.3 CI performance job | `.github/workflows/ci.yml` | Separate scheduled/manual job; no telemetry network send | Baseline artifacts retained and trend diff produced |
-| 222.4 Fabric benchmark coverage | new `tests/test_fabric_performance.py` | Single and shared Fabric generation budgets with output-count assertions | A fast but incomplete bundle fails |
+| 222.4 Fabric benchmark coverage (complete) | `tests/test_fabric_performance.py` | Single and shared Fabric generation budgets with artifact integrity assertions | A fast but incomplete bundle fails |
 | 222.5 Existing benchmark repair | `tests/test_merge_performance.py` | Use the supported `RUN_BENCHMARKS=1` gate; remove/document invalid `--benchmark` usage | Documented command runs without pytest option errors |
 
 **Exit gate:** A checked-in baseline explains which phase dominates
@@ -116,6 +116,17 @@ so Sprint 223 must profile TMDL/PBIR generation before considering XML extractio
 pass reduction. The scheduled/manual CI job retains PBIP and Fabric JSON baselines;
 historical trend comparison remains pending until the first Linux reference series
 has been collected.
+
+Baseline schema v3 adds per-phase measurements without changing the v2 wall-time
+or memory fields. A `Complex_Enterprise.twb` acceptance run measured 99.86% median
+PBIP generation coverage and 99.74% median Fabric generation coverage. The PBIP
+sample was marked variable, so these runs validate instrumentation coverage only;
+the stable untraced v2 row remains the performance reference.
+
+Fabric performance coverage is now guarded by an explicit benchmark module
+(`RUN_BENCHMARKS=1`) that validates both single-workbook and shared-model Fabric
+generation paths and enforces the integrity rule that an incomplete six-artifact
+bundle fails even if runtime is fast.
 
 A controlled experiment parallelizing the 21 small JSON reads in report
 self-healing increased the instrumented pipeline from about 3.75 s to 4.35 s due

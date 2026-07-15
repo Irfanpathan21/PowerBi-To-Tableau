@@ -10,11 +10,16 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'powerbi_import'))
 
-from telemetry import TelemetryCollector, is_telemetry_enabled, TELEMETRY_VERSION
+from telemetry import (
+    TELEMETRY_VERSION,
+    PhaseTimingCollector,
+    TelemetryCollector,
+    is_telemetry_enabled,
+)
 
 
 class TestIsTelemetryEnabled(unittest.TestCase):
@@ -395,6 +400,30 @@ class TestTelemetryGetData(unittest.TestCase):
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+
+
+class TestPhaseTimingCollector(unittest.TestCase):
+    def test_collects_repeated_phases_and_coverage(self):
+        ticks = iter((0.0, 1.0, 3.0, 4.0, 5.0, 8.0))
+        collector = PhaseTimingCollector(clock=lambda: next(ticks)).start()
+
+        with collector.phase('generation'):
+            pass
+        with collector.phase('generation'):
+            pass
+        result = collector.finish()
+
+        self.assertEqual(result['total_seconds'], 8.0)
+        self.assertEqual(result['measured_seconds'], 3.0)
+        self.assertEqual(result['coverage_percent'], 37.5)
+        self.assertEqual(result['phases'], {'generation': 3.0})
+
+    def test_unstarted_collector_is_empty(self):
+        result = PhaseTimingCollector().to_dict()
+
+        self.assertEqual(result['total_seconds'], 0.0)
+        self.assertEqual(result['coverage_percent'], 0.0)
+        self.assertEqual(result['phases'], {})
 
 
 if __name__ == '__main__':

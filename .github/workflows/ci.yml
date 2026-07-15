@@ -172,11 +172,54 @@ jobs:
         run: |
           python scripts/run_perf_baseline.py examples/tableau_samples/Complex_Enterprise.twb --format fabric --runs 3 --warmup 1 --output performance-results/complex-fabric.json
 
+      - name: Download previous baseline artifact (best effort)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: ci.yml
+          branch: main
+          name: performance-baseline-*
+          path: previous-performance
+          if_no_artifact_found: warn
+
+      - name: Build performance trend diff
+        run: |
+          mkdir -p performance-trend
+          PREVIOUS_DIR=""
+          if [ -d previous-performance ]; then
+            CANDIDATE=$(find previous-performance -type f -name "*.json" -printf "%h\n" | sort -u | head -n 1)
+            if [ -n "$CANDIDATE" ]; then
+              PREVIOUS_DIR="$CANDIDATE"
+            fi
+          fi
+
+          if [ -n "$PREVIOUS_DIR" ]; then
+            python scripts/compare_perf_baselines.py \
+              --current-dir performance-results \
+              --previous-dir "$PREVIOUS_DIR" \
+              --threshold-percent 10 \
+              --output-json performance-trend/trend_diff.json \
+              --output-md performance-trend/trend_diff.md
+          else
+            python scripts/compare_perf_baselines.py \
+              --current-dir performance-results \
+              --threshold-percent 10 \
+              --output-json performance-trend/trend_diff.json \
+              --output-md performance-trend/trend_diff.md
+          fi
+
       - name: Upload performance baselines
         uses: actions/upload-artifact@v4
         with:
           name: performance-baseline-${{ github.run_id }}
           path: performance-results/*.json
+          retention-days: 30
+
+      - name: Upload performance trend report
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-trend-${{ github.run_id }}
+          path: performance-trend/*
           retention-days: 30
 
   # ───────────────────── Stage 3: Validate ─────────────────

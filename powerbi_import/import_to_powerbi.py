@@ -11,6 +11,7 @@ import logging
 import uuid
 from datetime import datetime
 from pbip_generator import PowerBIProjectGenerator
+from telemetry import PhaseTimingCollector
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class PowerBIImporter:
     
     def __init__(self, source_dir=None):
         self.source_dir = source_dir or os.environ.get('TTPBI_EXTRACT_DIR', 'tableau_export/')
+        self.last_generation_timings = None
     
     def import_all(self, generate_pbip=True, report_name=None, output_dir=None,
                    calendar_start=None, calendar_end=None, culture=None,
@@ -45,15 +47,18 @@ class PowerBIImporter:
             culture: Override culture/locale for semantic model
         """
         
+        import_timings = PhaseTimingCollector().start()
         print("=" * 80)
         print("IMPORT POWER BI")
         print("=" * 80)
         print()
         
         # Load converted objects directly from tableau_export/
-        converted_objects = self._load_converted_objects()
+        with import_timings.phase('input_loading'):
+            converted_objects = self._load_converted_objects()
         
         if not converted_objects.get('datasources'):
+            self.last_generation_timings = import_timings.finish()
             print(f"  [ERROR] No datasources found in {os.path.join(self.source_dir, 'datasources.json')}")
             print("     Run extraction first: python migrate.py <file>")
             return
@@ -91,6 +96,29 @@ class PowerBIImporter:
             print("[OK] Power BI Projects (.pbip) generated automatically")
             print("   Open the .pbip files in Power BI Desktop")
             print()
+
+        importer_report = import_timings.finish()
+        generator_report = self.last_generation_timings or {}
+        generator_phases = generator_report.get('phases', {})
+        input_loading = importer_report['phases'].get('input_loading', 0.0)
+        orchestration = max(
+            0.0,
+            importer_report['total_seconds']
+            - input_loading
+            - generator_report.get('total_seconds', 0.0),
+        )
+        phases = {'input_loading': input_loading, **generator_phases}
+        phases['import_orchestration'] = orchestration
+        measured = sum(phases.values())
+        self.last_generation_timings = {
+            'total_seconds': importer_report['total_seconds'],
+            'measured_seconds': measured,
+            'coverage_percent': (
+                0.0 if importer_report['total_seconds'] == 0
+                else measured / importer_report['total_seconds'] * 100.0
+            ),
+            'phases': phases,
+        }
     
     def _load_converted_objects(self):
         """Load all extracted JSON files from the source directory."""
@@ -174,6 +202,7 @@ class PowerBIImporter:
                                                        incremental_refresh=incremental_refresh,
                                                        incremental_refresh_months=incremental_refresh_months,
                                                        parameterize=parameterize)
+            self.last_generation_timings = generator.last_phase_timings
             print(f"  [OK] Power BI Project created: {project_path}")
             
         except Exception as e:

@@ -21,14 +21,14 @@ and can optionally be sent to a configurable endpoint.
 """
 
 import json
+import logging
 import os
+import platform
 import sys
 import time
 import uuid
-import platform
-import logging
+from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,52 @@ def is_telemetry_enabled():
     """
     val = os.environ.get('TTPBI_TELEMETRY', '').lower().strip()
     return val in ('1', 'true', 'yes')
+
+
+class PhaseTimingCollector:
+    """Collect local phase durations without enabling usage telemetry."""
+
+    def __init__(self, clock=None):
+        self._clock = clock or time.perf_counter
+        self._started_at = None
+        self._finished_at = None
+        self._phases = {}
+
+    def start(self):
+        """Start the overall timing window."""
+        self._started_at = self._clock()
+        self._finished_at = None
+        self._phases = {}
+        return self
+
+    @contextmanager
+    def phase(self, name):
+        """Measure one named phase and accumulate repeated occurrences."""
+        started_at = self._clock()
+        try:
+            yield
+        finally:
+            elapsed = self._clock() - started_at
+            self._phases[name] = self._phases.get(name, 0.0) + elapsed
+
+    def finish(self):
+        """Finish the overall timing window and return its serializable data."""
+        self._finished_at = self._clock()
+        return self.to_dict()
+
+    def to_dict(self):
+        """Return phase totals and coverage of the overall timing window."""
+        end = self._finished_at
+        if end is None and self._started_at is not None:
+            end = self._clock()
+        total = 0.0 if self._started_at is None else end - self._started_at
+        measured = sum(self._phases.values())
+        return {
+            'total_seconds': total,
+            'measured_seconds': measured,
+            'coverage_percent': 0.0 if total == 0 else measured / total * 100.0,
+            'phases': dict(self._phases),
+        }
 
 
 class TelemetryCollector:

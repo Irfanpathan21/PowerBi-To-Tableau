@@ -96,10 +96,13 @@ def _generate_fabric(extract_dir, output_dir, report_name):
     from powerbi_import.fabric_project_generator import FabricProjectGenerator
     from powerbi_import.import_to_powerbi import PowerBIImporter
 
+    started = time.perf_counter()
+    input_started = time.perf_counter()
     extracted = PowerBIImporter(source_dir=extract_dir)._load_converted_objects()
-    result = FabricProjectGenerator(output_dir=output_dir).generate_project(
-        report_name, extracted,
-    )
+    input_loading = time.perf_counter() - input_started
+    generator = FabricProjectGenerator(output_dir=output_dir)
+    result = generator.generate_project(report_name, extracted)
+    validation_started = time.perf_counter()
     validation = result.get('validation', {})
     expected_artifacts = {
         'lakehouse', 'dataflow', 'notebook',
@@ -112,6 +115,28 @@ def _generate_fabric(extract_dir, output_dir, report_name):
         raise RuntimeError(
             'Fabric generation did not produce a valid six-artifact bundle'
         )
+    bundle_validation = time.perf_counter() - validation_started
+    generator_report = result.get('phase_timings') or {}
+    phases = {
+        'input_loading': input_loading,
+        **generator_report.get('phases', {}),
+        'bundle_validation': bundle_validation,
+    }
+    total = time.perf_counter() - started
+    phases['fabric_orchestration'] = max(
+        0.0,
+        total
+        - input_loading
+        - generator_report.get('total_seconds', 0.0)
+        - bundle_validation,
+    )
+    measured = sum(phases.values())
+    return {
+        'total_seconds': total,
+        'measured_seconds': measured,
+        'coverage_percent': 0.0 if total == 0 else measured / total * 100.0,
+        'phases': phases,
+    }
 
 
 def run_once(workbook_path, output_format='pbip', verbose=False,
@@ -131,6 +156,7 @@ def run_once(workbook_path, output_format='pbip', verbose=False,
     os.makedirs(output_dir)
 
     try:
+        generation_phase_timings = None
         output_stream = None
         if not verbose:
             output_stream = open(os.devnull, 'w', encoding='utf-8')
@@ -152,8 +178,11 @@ def run_once(workbook_path, output_format='pbip', verbose=False,
             )
 
         def generate():
+            nonlocal generation_phase_timings
             if output_format == 'fabric':
-                _generate_fabric(extract_dir, output_dir, report_name)
+                generation_phase_timings = _generate_fabric(
+                    extract_dir, output_dir, report_name,
+                )
                 return
             importer = PowerBIImporter(source_dir=extract_dir)
             importer.import_all(
@@ -161,7 +190,13 @@ def run_once(workbook_path, output_format='pbip', verbose=False,
                 report_name=report_name,
                 output_dir=output_dir,
             )
+            generation_phase_timings = importer.last_generation_timings
+            validation_started = time.perf_counter()
             _assert_pbip_output(output_dir, report_name)
+            validation_seconds = time.perf_counter() - validation_started
+            generation_phase_timings['phases']['output_validation'] = (
+                validation_seconds
+            )
 
         output_context = contextlib.ExitStack()
         if output_stream is not None:
@@ -177,6 +212,7 @@ def run_once(workbook_path, output_format='pbip', verbose=False,
             'extraction_seconds': extraction_seconds,
             'generation_seconds': generation_seconds,
             'total_seconds': extraction_seconds + generation_seconds,
+            'generation_phase_timings': generation_phase_timings,
         }
         if measure_memory:
             measurement.update({
@@ -235,8 +271,33 @@ def run_baseline(workbook_path, runs=3, warmup=1, output_format='pbip',
         name: _summarize([memory_measurement[name]])
         for name in memory_metrics
     })
+    phase_names = sorted({
+        phase_name
+        for measurement in measurements
+        for phase_name in (
+            measurement.get('generation_phase_timings') or {}
+        ).get('phases', {})
+    })
+    generation_phases = {
+        phase_name: _summarize([
+            measurement['generation_phase_timings']['phases'].get(
+                phase_name, 0.0,
+            )
+            for measurement in measurements
+        ])
+        for phase_name in phase_names
+    }
+    generation_phase_coverage = _summarize([
+        sum((measurement.get('generation_phase_timings') or {}).get(
+            'phases',
+        ).values()) / measurement['generation_seconds'] * 100.0
+        if measurement['generation_seconds'] else 0.0
+        for measurement in measurements
+    ])
+    summary['generation_phases'] = generation_phases
+    summary['generation_phase_coverage_percent'] = generation_phase_coverage
     return {
-        'schema_version': 2,
+        'schema_version': 3,
         'created_at': datetime.now(timezone.utc).isoformat(),
         'workbook': workbook_path,
         'workbook_size_bytes': os.path.getsize(workbook_path),

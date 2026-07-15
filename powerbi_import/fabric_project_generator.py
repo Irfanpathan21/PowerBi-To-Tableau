@@ -13,18 +13,19 @@ This module is invoked when ``--output-format fabric`` is specified
 on the CLI.
 """
 
-import os
 import json
+import os
 from datetime import datetime
 
-from .lakehouse_generator import LakehouseGenerator
 from .dataflow_generator import DataflowGenerator
+from .fabric_item import build_item_registry, logical_id
+from .fabric_semantic_model_generator import FabricSemanticModelGenerator
+from .fabric_validator import FabricProjectValidator
+from .lakehouse_generator import LakehouseGenerator
 from .notebook_generator import NotebookGenerator
 from .pipeline_generator import PipelineGenerator
-from .fabric_semantic_model_generator import FabricSemanticModelGenerator
-from .fabric_item import build_item_registry, logical_id
+from .telemetry import PhaseTimingCollector
 from .thin_report_generator import ThinReportGenerator
-from .fabric_validator import FabricProjectValidator
 
 
 def _json_default(obj):
@@ -64,6 +65,7 @@ class FabricProjectGenerator:
 
     def __init__(self, output_dir=None):
         self.output_dir = output_dir or os.path.join('artifacts', 'fabric_projects', 'migrated')
+        self.last_phase_timings = None
 
     def generate_project(self, project_name, extracted_data,
                          calendar_start=None, calendar_end=None,
@@ -87,6 +89,7 @@ class FabricProjectGenerator:
             dict with project_path and per-artifact stats.
         """
         project_dir = os.path.join(self.output_dir, project_name)
+        phase_timings = PhaseTimingCollector().start()
         os.makedirs(project_dir, exist_ok=True)
         item_registry = build_item_registry(project_name)
         workspace_id = logical_id(project_name, 'Workspace')
@@ -101,55 +104,59 @@ class FabricProjectGenerator:
 
         # 1. Lakehouse
         print(f"  [1/{artifact_count}] Generating Lakehouse...")
-        lh_gen = LakehouseGenerator(
-            project_dir, project_name, item_id=item_registry['Lakehouse'])
-        lh_stats = lh_gen.generate(extracted_data)
+        with phase_timings.phase('lakehouse'):
+            lh_gen = LakehouseGenerator(
+                project_dir, project_name, item_id=item_registry['Lakehouse'])
+            lh_stats = lh_gen.generate(extracted_data)
         results['artifacts']['lakehouse'] = lh_stats
         print(f"         Tables: {lh_stats['tables']}, Columns: {lh_stats['columns']}, "
               f"Calc columns: {lh_stats['calc_columns']}")
 
         # 2. Dataflow Gen2
         print(f"  [2/{artifact_count}] Generating Dataflow Gen2...")
-        df_gen = DataflowGenerator(
-            project_dir,
-            project_name,
-            item_id=item_registry['Dataflow'],
-            lakehouse_id=item_registry['Lakehouse'],
-            workspace_id=workspace_id,
-        )
-        df_stats = df_gen.generate(extracted_data)
+        with phase_timings.phase('dataflow'):
+            df_gen = DataflowGenerator(
+                project_dir,
+                project_name,
+                item_id=item_registry['Dataflow'],
+                lakehouse_id=item_registry['Lakehouse'],
+                workspace_id=workspace_id,
+            )
+            df_stats = df_gen.generate(extracted_data)
         results['artifacts']['dataflow'] = df_stats
         print(f"         Queries: {df_stats['queries']}, Calc columns: {df_stats['calc_columns']}")
 
         # 3. PySpark Notebook
         print(f"  [3/{artifact_count}] Generating PySpark Notebooks...")
-        nb_gen = NotebookGenerator(
-            project_dir,
-            project_name,
-            item_id=item_registry['Notebook'],
-            lakehouse_id=item_registry['Lakehouse'],
-            workspace_id=workspace_id,
-        )
-        nb_stats = nb_gen.generate(extracted_data)
+        with phase_timings.phase('notebook'):
+            nb_gen = NotebookGenerator(
+                project_dir,
+                project_name,
+                item_id=item_registry['Notebook'],
+                lakehouse_id=item_registry['Lakehouse'],
+                workspace_id=workspace_id,
+            )
+            nb_stats = nb_gen.generate(extracted_data)
         results['artifacts']['notebook'] = nb_stats
         print(f"         Notebooks: {nb_stats['notebooks']}, Cells: {nb_stats['cells']}")
 
         # 4. Semantic Model (DirectLake)
         print(f"  [4/{artifact_count}] Generating DirectLake Semantic Model...")
-        sm_gen = FabricSemanticModelGenerator(
-            project_dir, project_name,
-            lakehouse_name=f'{project_name}_Lakehouse',
-            item_id=item_registry['SemanticModel'],
-            lakehouse_id=item_registry['Lakehouse'],
-            workspace_id=workspace_id,
-        )
-        sm_stats = sm_gen.generate(
-            extracted_data,
-            calendar_start=calendar_start,
-            calendar_end=calendar_end,
-            culture=culture,
-            languages=languages,
-        )
+        with phase_timings.phase('semantic_model'):
+            sm_gen = FabricSemanticModelGenerator(
+                project_dir, project_name,
+                lakehouse_name=f'{project_name}_Lakehouse',
+                item_id=item_registry['SemanticModel'],
+                lakehouse_id=item_registry['Lakehouse'],
+                workspace_id=workspace_id,
+            )
+            sm_stats = sm_gen.generate(
+                extracted_data,
+                calendar_start=calendar_start,
+                calendar_end=calendar_end,
+                culture=culture,
+                languages=languages,
+            )
         results['artifacts']['semantic_model'] = sm_stats
         print(f"         Tables: {sm_stats.get('tables', 0)}, "
               f"Measures: {sm_stats.get('measures', 0)}, "
@@ -158,39 +165,42 @@ class FabricProjectGenerator:
         if include_report:
             # 5. Power BI report bound to the local Direct Lake semantic model
             print(f"  [5/{artifact_count}] Generating Power BI Report...")
-            report_gen = ThinReportGenerator(
-                project_name,
-                project_dir,
-                item_id=item_registry['Report'],
-            )
-            report_dir = report_gen.generate_thin_report(
-                project_name,
-                extracted_data,
-            )
-            report_stats = {
-                'path': report_dir,
-                'worksheets': len(extracted_data.get('worksheets', [])),
-                'dashboards': len(extracted_data.get('dashboards', [])),
-            }
+            with phase_timings.phase('report'):
+                report_gen = ThinReportGenerator(
+                    project_name,
+                    project_dir,
+                    item_id=item_registry['Report'],
+                )
+                report_dir = report_gen.generate_thin_report(
+                    project_name,
+                    extracted_data,
+                )
+                report_stats = {
+                    'path': report_dir,
+                    'worksheets': len(extracted_data.get('worksheets', [])),
+                    'dashboards': len(extracted_data.get('dashboards', [])),
+                }
             results['artifacts']['report'] = report_stats
             print(f"         Worksheets: {report_stats['worksheets']}, "
                   f"Dashboards: {report_stats['dashboards']}")
 
         # Final artifact: orchestration pipeline
         print(f"  [{artifact_count}/{artifact_count}] Generating Data Pipeline...")
-        pipe_gen = PipelineGenerator(
-            project_dir, project_name,
-            lakehouse_name=f'{project_name}_Lakehouse',
-            item_id=item_registry['DataPipeline'],
-            item_registry=item_registry,
-            workspace_id=workspace_id,
-        )
-        pipe_stats = pipe_gen.generate(extracted_data)
+        with phase_timings.phase('pipeline'):
+            pipe_gen = PipelineGenerator(
+                project_dir, project_name,
+                lakehouse_name=f'{project_name}_Lakehouse',
+                item_id=item_registry['DataPipeline'],
+                item_registry=item_registry,
+                workspace_id=workspace_id,
+            )
+            pipe_stats = pipe_gen.generate(extracted_data)
         results['artifacts']['pipeline'] = pipe_stats
         print(f"         Activities: {pipe_stats['activities']}, Stages: {pipe_stats['stages']}")
 
-        validation = FabricProjectValidator.validate(
-            project_dir, project_name, include_report=include_report)
+        with phase_timings.phase('validation'):
+            validation = FabricProjectValidator.validate(
+                project_dir, project_name, include_report=include_report)
         results['validation'] = validation
         if not validation['valid']:
             details = '; '.join(validation['errors'])
@@ -198,8 +208,11 @@ class FabricProjectGenerator:
 
         # Write project metadata
         meta_path = os.path.join(project_dir, 'fabric_project_metadata.json')
-        with open(meta_path, 'w', encoding='utf-8') as f:
-            json.dump(_sanitize_for_json(results), f, indent=2, default=_json_default)
+        with phase_timings.phase('metadata'):
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(_sanitize_for_json(results), f, indent=2, default=_json_default)
+        self.last_phase_timings = phase_timings.finish()
+        results['phase_timings'] = self.last_phase_timings
 
         print(f"\n  [OK] Fabric project created: {project_dir}")
         return results

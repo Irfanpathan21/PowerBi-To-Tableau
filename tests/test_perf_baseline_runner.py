@@ -45,16 +45,23 @@ class TestRunBaseline(unittest.TestCase):
             'extraction_seconds': 9.0,
             'generation_seconds': 9.0,
             'total_seconds': 18.0,
+            'generation_phase_timings': None,
         }
         measured = {
             'extraction_seconds': 1.0,
             'generation_seconds': 2.0,
             'total_seconds': 3.0,
+            'generation_phase_timings': {
+                'phases': {'semantic_model': 1.0, 'report': 0.9},
+            },
         }
         memory = {
             'extraction_seconds': 10.0,
             'generation_seconds': 20.0,
             'total_seconds': 30.0,
+            'generation_phase_timings': {
+                'phases': {'semantic_model': 10.0},
+            },
             'extraction_peak_mb': 4.0,
             'generation_peak_mb': 5.0,
             'peak_mb': 5.0,
@@ -72,6 +79,15 @@ class TestRunBaseline(unittest.TestCase):
         )
         self.assertEqual(baseline['summary']['total_seconds']['median'], 3.0)
         self.assertEqual(baseline['summary']['peak_mb']['max'], 5.0)
+        self.assertEqual(
+            baseline['summary']['generation_phases']['semantic_model']['median'],
+            1.0,
+        )
+        self.assertEqual(
+            baseline['summary']['generation_phase_coverage_percent']['median'],
+            95.0,
+        )
+        self.assertEqual(baseline['schema_version'], 3)
         self.assertEqual(baseline['memory_measurement']['peak_mb'], 5.0)
         self.assertEqual(len(baseline['measurements']), 3)
         self.assertTrue(baseline['stable'])
@@ -142,12 +158,17 @@ class TestFabricBaselineGeneration(unittest.TestCase):
             self._fabric_result()
         )
 
-        run_perf_baseline._generate_fabric('extract', 'output', 'Report')
+        timings = run_perf_baseline._generate_fabric(
+            'extract', 'output', 'Report',
+        )
 
         generator.assert_called_once_with(output_dir='output')
         generator.return_value.generate_project.assert_called_once_with(
             'Report', {'datasources': [{}]},
         )
+        self.assertIn('input_loading', timings['phases'])
+        self.assertIn('bundle_validation', timings['phases'])
+        self.assertIn('fabric_orchestration', timings['phases'])
 
     @patch('powerbi_import.fabric_project_generator.FabricProjectGenerator')
     @patch('powerbi_import.import_to_powerbi.PowerBIImporter')

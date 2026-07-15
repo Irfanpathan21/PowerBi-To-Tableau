@@ -217,6 +217,7 @@ class PowerBIProjectGenerator:
         self._relationship_inference_cache = {}
         self._fidelity_preprocess_summary = {}
         self._equivalence_report = None
+        self.last_phase_timings = None
         
         os.makedirs(self.output_dir, exist_ok=True)
     
@@ -241,6 +242,9 @@ class PowerBIProjectGenerator:
             str: Path to the generated project
         """
         
+        from powerbi_import.telemetry import PhaseTimingCollector
+
+        phase_timings = PhaseTimingCollector().start()
         print(f"\nðŸ”¨ Generating Power BI Project: {report_name}")
         
         # Store options for downstream use
@@ -258,7 +262,10 @@ class PowerBIProjectGenerator:
         self._parameterize = parameterize
 
         # Preprocess model metadata using optional fidelity enhancers.
-        converted_objects = self._preprocess_for_fidelity(report_name, converted_objects)
+        with phase_timings.phase('fidelity_preprocess'):
+            converted_objects = self._preprocess_for_fidelity(
+                report_name, converted_objects,
+            )
         
         # Detect datasource-only mode (.tds â€” no worksheets/dashboards)
         self._datasource_only = not bool(
@@ -270,36 +277,54 @@ class PowerBIProjectGenerator:
         os.makedirs(project_dir, exist_ok=True)
         
         # 1. Create the .pbip file
-        pbip_file = self.create_pbip_file(project_dir, report_name)
+        with phase_timings.phase('project_manifest'):
+            pbip_file = self.create_pbip_file(project_dir, report_name)
         print(f"  âœ“ .pbip file created: {pbip_file}")
         
         # 2. Create the SemanticModel structure
         if self._output_format in ('pbip', 'tmdl'):
-            sm_dir = self.create_semantic_model_structure(project_dir, report_name, converted_objects)
+            with phase_timings.phase('semantic_model'):
+                sm_dir = self.create_semantic_model_structure(
+                    project_dir, report_name, converted_objects,
+                )
             print(f"  âœ“ SemanticModel created: {sm_dir}")
         
         # 3. Create the Report structure (skip for datasource-only .tds migrations)
         has_visuals = bool(converted_objects.get('worksheets') or converted_objects.get('dashboards'))
         if self._output_format in ('pbip', 'pbir'):
-            report_dir = self.create_report_structure(project_dir, report_name, converted_objects)
+            with phase_timings.phase('report'):
+                report_dir = self.create_report_structure(
+                    project_dir, report_name, converted_objects,
+                )
             print(f"  âœ“ Report created: {report_dir}")
         elif not has_visuals:
             print(f"  â„¹ Datasource-only mode: SemanticModel generated (no Report)")
         
         # 4. Create metadata
-        self.create_metadata(project_dir, report_name, converted_objects)
+        with phase_timings.phase('metadata'):
+            self.create_metadata(project_dir, report_name, converted_objects)
         print(f"  âœ“ Metadata created")
         
         # 5. Create paginated report layout (if requested)
         if self._paginated:
-            pag_dir = self._create_paginated_report(project_dir, report_name, converted_objects)
+            with phase_timings.phase('paginated_report'):
+                pag_dir = self._create_paginated_report(
+                    project_dir, report_name, converted_objects,
+                )
             print(f"  âœ“ Paginated report layout created: {pag_dir}")
         
         # 6. Generate post-migration automation artifacts
-        self._generate_automation_artifacts(project_dir, report_name, converted_objects)
+        with phase_timings.phase('automation_artifacts'):
+            self._generate_automation_artifacts(
+                project_dir, report_name, converted_objects,
+            )
 
         # 7. Equivalence report (best-effort, non-blocking)
-        self._run_equivalence_checks(project_dir, report_name, converted_objects)
+        with phase_timings.phase('equivalence_validation'):
+            self._run_equivalence_checks(
+                project_dir, report_name, converted_objects,
+            )
+        self.last_phase_timings = phase_timings.finish()
         
         print(f"\nâœ… Power BI Project generated: {project_dir}")
         print(f"   ðŸ“‚ Open in Power BI Desktop: {pbip_file}")
