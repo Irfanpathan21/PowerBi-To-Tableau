@@ -494,9 +494,20 @@ class TableauExtractor:
         # This method maintains backward compatibility
         calculations = []
         seen_names = set()
-        
-        for datasource in self._findall_root_cached(root, './/datasource'):
-            ds_data = extract_datasource(datasource, twbx_path=self.tableau_file)
+
+        existing_datasources = self.workbook_data.get('datasources') or []
+        if existing_datasources:
+            # Fast path: reuse already extracted datasource payloads and avoid
+            # re-running extract_datasource over the same XML subtree.
+            source_datasources = existing_datasources
+        else:
+            # Compatibility fallback for direct/isolated method calls.
+            source_datasources = [
+                extract_datasource(ds, twbx_path=self.tableau_file)
+                for ds in self._findall_root_cached(root, './/datasource')
+            ]
+
+        for ds_data in source_datasources:
             for calc in ds_data.get('calculations', []):
                 cname = calc.get('name', '')
                 if cname not in seen_names:

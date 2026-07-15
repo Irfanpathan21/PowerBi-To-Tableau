@@ -166,6 +166,12 @@ without changing extraction semantics. Regression coverage remains green for
 extractor and performance suites (221 tests), and a probe baseline on
 `Complex_Enterprise.twb` reports PBIP median 1.221 s (3 measured runs, 1 warm-up).
 
+The second 223.1 increment removes redundant datasource re-extraction in
+`extract_calculations` by reusing previously extracted datasource payloads.
+With the same probe protocol, `Complex_Enterprise.twb` PBIP median improved
+to 0.827 s (about 32% faster vs the prior 1.221 s probe), while extraction
+and performance regression suites remained fully passing (222 tests).
+
 ## 5. Sprint 224: True Direct Lake and Cross-Artifact Contract
 
 **Owners:** @generator, @semantic, @wiring, @tester

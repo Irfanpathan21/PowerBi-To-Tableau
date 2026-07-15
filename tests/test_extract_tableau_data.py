@@ -156,6 +156,27 @@ class TestRootNodeCache(unittest.TestCase):
         self.assertIs(first, second)
         self.assertEqual(mock_findall.call_count, 1)
 
+    def test_extract_calculations_reuses_existing_datasources(self):
+        ext = _make_extractor()
+        ext.workbook_data['datasources'] = [
+            {
+                'name': 'DS_A',
+                'calculations': [
+                    {'name': 'Calc_A', 'formula': '1'},
+                    {'name': 'Calc_B', 'formula': '2'},
+                ],
+            }
+        ]
+        root = ET.fromstring('<workbook><datasource name="DS_A"/></workbook>')
+
+        with patch.object(etd, 'extract_datasource', wraps=etd.extract_datasource) as mock_extract:
+            ext.extract_calculations(root)
+
+        calc_names = [c.get('name') for c in ext.workbook_data.get('calculations', [])]
+        self.assertIn('Calc_A', calc_names)
+        self.assertIn('Calc_B', calc_names)
+        self.assertEqual(mock_extract.call_count, 0)
+
 
 # ═══════════════════════════════════════════════════════════════════
 # determine_chart_type / _map_tableau_mark_to_type / _infer_automatic
