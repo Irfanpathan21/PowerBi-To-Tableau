@@ -61,6 +61,14 @@ _PROVIDERS = {
         'cost_per_1k_input': 0.0025,
         'cost_per_1k_output': 0.01,
     },
+    'local': {
+        'url': '',  # Set via endpoint / local_url param (OpenAI-compatible)
+        'default_model': 'local-model',
+        'auth_header': 'Authorization',
+        'auth_prefix': 'Bearer ',
+        'cost_per_1k_input': 0.0,   # local inference is free
+        'cost_per_1k_output': 0.0,
+    },
 }
 
 _SYSTEM_PROMPT = """You are an expert in both Tableau calculated fields and Power BI DAX.
@@ -142,6 +150,8 @@ class LLMClient:
 
         if provider == 'azure_openai' and not endpoint:
             raise ValueError("endpoint is required for azure_openai provider")
+        if provider == 'local' and not endpoint:
+            raise ValueError("endpoint (local_url) is required for local provider")
 
     @property
     def calls_remaining(self):
@@ -158,11 +168,22 @@ class LLMClient:
     def _build_url(self):
         if self.provider == 'azure_openai':
             return f"{self.endpoint.rstrip('/')}/openai/deployments/{self.model}/chat/completions?api-version=2024-02-01"
+        if self.provider == 'local':
+            base = self.endpoint.rstrip('/')
+            if base.endswith('/chat/completions'):
+                return base
+            if base.endswith('/v1'):
+                return base + '/chat/completions'
+            return base + '/v1/chat/completions'
         return _PROVIDERS[self.provider]['url']
 
     def _build_headers(self):
         cfg = _PROVIDERS[self.provider]
         headers = {'Content-Type': 'application/json'}
+        # Local OpenAI-compatible servers usually need no auth; only send a
+        # bearer token when one was explicitly configured.
+        if self.provider == 'local' and not self.api_key:
+            return headers
         headers[cfg['auth_header']] = f"{cfg['auth_prefix']}{self.api_key}"
         if self.provider == 'anthropic':
             headers['anthropic-version'] = '2023-06-01'

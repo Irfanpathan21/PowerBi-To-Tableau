@@ -170,14 +170,7 @@ This folder contains sample Tableau workbooks to test the Power BI migration too
 
 ```bash
 cd TableauToPowerBI
-python migrate.py examples/tableau_samples/Superstore_Sales.twb
-python migrate.py examples/tableau_samples/HR_Analytics.twb
-python migrate.py examples/tableau_samples/Financial_Report.twb
-python migrate.py examples/tableau_samples/BigQuery_Analytics.twb
-python migrate.py examples/tableau_samples/Security_Test.twb
-python migrate.py examples/tableau_samples/Enterprise_Sales.twb
-python migrate.py examples/tableau_samples/Manufacturing_IoT.twb
-python migrate.py examples/tableau_samples/Marketing_Campaign.twb
+python migrate.py batch examples/tableau_samples/
 ```
 
 Output is generated in `artifacts/powerbi_projects/<name>/`.

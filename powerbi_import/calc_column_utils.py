@@ -147,19 +147,69 @@ def tableau_formula_to_pyspark(formula, col_name):
     def _col_ref(m):
         return f'F.col("{m.group(1)}")'
 
+    def _expression(value):
+        value = re.sub(r'\[([^\]]+)\]', _col_ref, value.strip())
+        value = re.sub(r'(?<![<>=!])=(?!=)', '==', value)
+        value = re.sub(r'\bTRUE\b', 'True', value, flags=re.IGNORECASE)
+        value = re.sub(r'\bFALSE\b', 'False', value, flags=re.IGNORECASE)
+        value = re.sub(r'\bNULL\b', 'None', value, flags=re.IGNORECASE)
+        return value
+
+    conditional = _parse_tableau_if_chain(formula)
+    if conditional:
+        branches, otherwise = conditional
+        chain = ''
+        for index, (condition, value) in enumerate(branches):
+            method = 'F.when' if index == 0 else '.when'
+            chain += f'{method}({_expression(condition)}, {_expression(value)})'
+        chain += f'.otherwise({_expression(otherwise)})'
+        return f'df = df.withColumn("{col_name}", {chain})'
+
     if_match = re.match(
         r'^\s*IF\s+(.+?)\s+THEN\s+(.+?)\s+ELSE\s+(.+?)\s+END\s*$',
         formula, re.IGNORECASE | re.DOTALL,
     )
     if if_match:
-        cond = re.sub(r'\[([^\]]+)\]', _col_ref, if_match.group(1).strip())
-        then_v = re.sub(r'\[([^\]]+)\]', _col_ref, if_match.group(2).strip())
-        else_v = re.sub(r'\[([^\]]+)\]', _col_ref, if_match.group(3).strip())
+        cond = _expression(if_match.group(1))
+        then_v = _expression(if_match.group(2))
+        else_v = _expression(if_match.group(3))
         return f'df = df.withColumn("{col_name}", F.when({cond}, {then_v}).otherwise({else_v}))'
 
     if re.match(r'^\[[^\]]+\]$', formula.strip()):
         inner = formula.strip().strip('[]')
         return f'df = df.withColumn("{col_name}", F.col("{inner}"))'
 
-    pyspark_expr = re.sub(r'\[([^\]]+)\]', _col_ref, formula)
+    pyspark_expr = _expression(formula)
     return f'df = df.withColumn("{col_name}", {pyspark_expr})'
+
+
+def _parse_tableau_if_chain(formula):
+    """Parse a flat Tableau IF/ELSEIF/ELSE chain into branch tuples."""
+    match = re.match(r'^\s*IF\s+(.+?)\s+END\s*$', formula, re.I | re.S)
+    if not match:
+        return None
+
+    tokens = re.split(
+        r'\b(THEN|ELSEIF|ELSE)\b', match.group(1), flags=re.IGNORECASE)
+    if len(tokens) < 5:
+        return None
+
+    branches = []
+    position = 0
+    while position + 2 < len(tokens):
+        condition = tokens[position].strip()
+        if tokens[position + 1].upper() != 'THEN':
+            return None
+        value = tokens[position + 2].strip()
+        position += 3
+        if position >= len(tokens):
+            return None
+        separator = tokens[position].upper()
+        position += 1
+        branches.append((condition, value))
+        if separator == 'ELSE':
+            otherwise = ''.join(tokens[position:]).strip()
+            return (branches, otherwise) if otherwise else None
+        if separator != 'ELSEIF':
+            return None
+    return None

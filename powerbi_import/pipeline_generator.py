@@ -18,16 +18,22 @@ import json
 import re
 from datetime import datetime
 
+from .fabric_item import logical_id, write_platform
 from .fabric_naming import sanitize_pipeline_name as _sanitize
+from .fabric_sources import datasource_has_connected_tables
 
 
 class PipelineGenerator:
     """Generate a Fabric Data Pipeline artifact."""
 
-    def __init__(self, project_dir, pipeline_name, lakehouse_name=None):
+    def __init__(self, project_dir, pipeline_name, lakehouse_name=None,
+                 item_id=None, item_registry=None, workspace_id=None):
         self.project_dir = project_dir
         self.pipeline_name = pipeline_name
         self.lakehouse_name = lakehouse_name or pipeline_name
+        self.item_id = item_id or logical_id(pipeline_name, 'DataPipeline')
+        self.item_registry = item_registry or {}
+        self.workspace_id = workspace_id or logical_id(pipeline_name, 'Workspace')
         self.pipe_dir = os.path.join(project_dir, f'{pipeline_name}.Pipeline')
         os.makedirs(self.pipe_dir, exist_ok=True)
 
@@ -45,9 +51,10 @@ class PipelineGenerator:
         activities = self._build_activities(datasources)
         pipeline_def = self._build_pipeline_definition(activities)
 
-        def_path = os.path.join(self.pipe_dir, 'pipeline_definition.json')
-        with open(def_path, 'w', encoding='utf-8') as f:
-            json.dump(pipeline_def, f, indent=2)
+        for filename in ('pipeline-content.json', 'pipeline_definition.json'):
+            def_path = os.path.join(self.pipe_dir, filename)
+            with open(def_path, 'w', encoding='utf-8') as f:
+                json.dump(pipeline_def, f, indent=2)
 
         meta = {
             'displayName': self.pipeline_name,
@@ -88,13 +95,19 @@ class PipelineGenerator:
         return activities
 
     def _dataflow_activities(self, datasources):
-        """Create one Dataflow refresh activity per datasource."""
-        activities = []
-        for idx, ds in enumerate(datasources):
-            ds_name = ds.get('name', f'Datasource_{idx + 1}')
-            safe_name = _sanitize(ds_name)
-            activity = {
-                'name': f'Refresh_Dataflow_{safe_name}',
+        """Create one refresh activity for the generated Dataflow item."""
+        connected_sources = [
+            datasource for datasource in datasources
+            if datasource_has_connected_tables(datasource)
+        ]
+        if not connected_sources:
+            return []
+        datasource_names = [
+            ds.get('name', f'Datasource_{idx + 1}')
+            for idx, ds in enumerate(connected_sources)
+        ]
+        return [{
+                'name': 'Refresh_Dataflow',
                 'type': 'RefreshDataflow',
                 'dependsOn': [],
                 'policy': {
@@ -105,15 +118,18 @@ class PipelineGenerator:
                     'secureInput': False,
                 },
                 'typeProperties': {
-                    'dataflowId': '{{DATAFLOW_ID}}',
-                    'workspaceId': '{{WORKSPACE_ID}}',
+                    'dataflowId': self.item_registry.get(
+                        'Dataflow', logical_id(self.pipeline_name, 'Dataflow')),
+                    'workspaceId': self.workspace_id,
                     'notifyOption': 'NoNotification',
                     'dataflowType': 'DataflowFabric',
                 },
-                'description': f'Refresh Dataflow Gen2 for datasource: {ds_name}',
-            }
-            activities.append(activity)
-        return activities
+                'description': (
+                    'Refresh the generated Dataflow Gen2 for: '
+                    + (', '.join(datasource_names) or 'all queries')
+                ),
+            }]
+
 
     def _notebook_activity(self, depends_on=None):
         """Create a Notebook execution activity."""
@@ -130,8 +146,9 @@ class PipelineGenerator:
                 'retryIntervalInSeconds': 60,
             },
             'typeProperties': {
-                'notebookId': '{{NOTEBOOK_ID}}',
-                'workspaceId': '{{WORKSPACE_ID}}',
+                'notebookId': self.item_registry.get(
+                    'Notebook', logical_id(self.pipeline_name, 'Notebook')),
+                'workspaceId': self.workspace_id,
             },
             'description': 'Execute PySpark ETL notebook to transform data into Delta tables.',
         }
@@ -153,8 +170,9 @@ class PipelineGenerator:
                 'secureInput': False,
             },
             'typeProperties': {
-                'datasetId': '{{SEMANTIC_MODEL_ID}}',
-                'workspaceId': '{{WORKSPACE_ID}}',
+                'datasetId': self.item_registry.get(
+                    'SemanticModel', logical_id(self.pipeline_name, 'SemanticModel')),
+                'workspaceId': self.workspace_id,
             },
             'description': 'Refresh the DirectLake semantic model after ETL completes.',
         }
@@ -184,32 +202,33 @@ class PipelineGenerator:
 
     def _write_platform_file(self):
         """Write .platform manifest for the Pipeline item."""
-        platform = {
-            "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
-            "metadata": {
-                "type": "DataPipeline",
-                "displayName": self.pipeline_name,
-            },
-            "config": {
-                "version": "2.0",
-                "logicalId": f"pipeline-{self.pipeline_name.lower().replace(' ', '-')}",
-            },
-        }
-        path = os.path.join(self.pipe_dir, '.platform')
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(platform, f, indent=2)
+        write_platform(
+            self.pipe_dir,
+            'DataPipeline',
+            self.pipeline_name,
+            self.item_id,
+        )
 
     @staticmethod
     def _count_stages(activities):
         """Count pipeline stages (layers of dependency)."""
         if not activities:
             return 0
-        stages = 1
-        for a in activities:
-            deps = a.get('dependsOn', [])
-            if deps:
-                stages = max(stages, 2)
-                for d in deps:
-                    if isinstance(d, dict) and d.get('activity', '').startswith('Run_ETL'):
-                        stages = max(stages, 3)
-        return stages
+        depths = {}
+        pending = list(activities)
+        while pending:
+            progressed = False
+            for activity in pending[:]:
+                dependencies = [
+                    dependency.get('activity')
+                    for dependency in activity.get('dependsOn', [])
+                    if isinstance(dependency, dict)
+                ]
+                if all(name in depths for name in dependencies):
+                    depths[activity.get('name')] = 1 + max(
+                        (depths[name] for name in dependencies), default=0)
+                    pending.remove(activity)
+                    progressed = True
+            if not progressed:
+                return len(activities)
+        return max(depths.values(), default=0)

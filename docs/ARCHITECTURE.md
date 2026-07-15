@@ -170,6 +170,60 @@ For environments without Mermaid rendering:
 | `config/settings.py` | Centralized config via env vars |
 | `config/environments.py` | Per-environment configs (dev/staging/production) |
 
+### Self-Healing Subsystem
+
+Deterministic, confidence-scored repair of generated artifacts so the `.pbip`
+opens cleanly in Power BI Desktop — with an optional LLM escalation. The layers
+import strictly top-to-bottom (no cycles):
+
+```
+healing.py (facade — one import surface, heal_and_verify())
+   ├── autoheal.py        closed-loop orchestration (heal → collect errors → LLM → re-validate → apply if valid)
+   ├── openability.py     detection / preflight (Power Query M + DAX + JSON + structure)
+   ├── dax_healing.py     DAX healers (idempotent, span-aware)
+   ├── m_healing.py       Power Query (M) healers
+   ├── visual_healing.py  PBIR visual container healers (annotation placement, position, type)
+   └── healing_core.py    canonical contract: HealAction, HealReport, HIGH/MEDIUM/LOW
+```
+
+| Module | Responsibility |
+|--------|---------------|
+| `healing_core.py` | Canonical shared contract — `HealAction`, `HealReport`, confidence levels/rank. Single source of truth so no healer reaches into another. |
+| `dax_healing.py` | `heal_dax()` — idempotent, non-degrading, span-aware DAX repairs (`==`→`=`, `SUM([measure])`→`[measure]`, balance parens/brackets, trailing commas). |
+| `m_healing.py` | `heal_m()` — Power Query M repairs (identifier quoting, trailing commas, paren balance). |
+| `visual_healing.py` | `heal_visual()` — PBIR container repairs; flagship fix moves annotations to the container root (critical load-failure bug). |
+| `openability.py` | `check_openability()` preflight + `extract_m_partitions()` — validates every M partition, DAX measure, JSON file, TMDL, project structure, report→model reference and PBIR schema without opening Desktop (7 checks). |
+| `desktop_probe.py` | `probe_desktop_open()` — best-effort **real** open self-check: launches Power BI Desktop against the `.pbip` and watches for an early crash / FrownDump / error traces (Windows + Desktop install; the static preflight stays authoritative). |
+| `autoheal.py` | `AutoHealer` closed loop — deterministic heal → collect residual errors (`StaticValidatorSource`/`LogFileSource`/`PbiDesktopSource`) → optional LLM correction via `LLMGateway` → **re-validate → apply only if valid** (never degrades). Records each applied fix as a `RepairAttempt` (distinct from `HealAction` — it carries the validation outcome). |
+| `recovery_report.py` | Records every applied repair (`record_heal`) into the recovery ledger via duck typing (no import coupling to the healers). |
+| `healing.py` | Unified facade re-exporting the whole subsystem; `heal_and_verify(project_dir)` heals then re-runs the openability preflight, returning `(AutoHealReport, OpenabilityReport)`. |
+
+The static openability gate runs automatically after every PBIP generation, and
+after closed-loop autoheal when autoheal is enabled. A blocking result fails the
+migration and writes `openability_report.json`; `--no-verify-open` is the explicit
+escape hatch. Power BI Desktop is never launched automatically: `--desktop-probe`
+remains an opt-in diagnostic. The subsystem is also reachable through MCP
+(`verify_open`, `autoheal` tools).
+
+#### How the healing layers relate
+
+The expression-level subsystem above is one of several complementary healing
+stages that run at different points in the pipeline. They are **orthogonal** (each
+repairs a different artifact at a different phase), not duplicates:
+
+| Stage | Module | When | Repairs |
+|-------|--------|------|---------|
+| 1. Pre-write model heal | `tmdl_generator._self_heal_model()` + `self_healing_v3.py` | during TMDL build (in-memory dict) | semantic-model structure (relationships, keys, hidden columns) |
+| 2. Post-write report heal | `self_healing_report.py` | after PBIR JSON is written | visual layout, filters, bookmarks, theme (PBIR v4.0 JSON) |
+| 3. Expression heal | `healing.py` subsystem (this section) | preflight / post-gen / on-demand | DAX, Power Query (M), visual containers |
+| 4. Recovery ledger | `recovery_report.py` | throughout | records every repair from stages 1–3 (one JSON) |
+| 5. Quality gate | `rollback_engine.py` | after generation | severity verdict → ship / quarantine / rollback |
+| 6. Review loop (optional) | `preceptor.py` | on request | DRAFT→REVIEW→COACH scoring + coaching feedback |
+
+Stages 1–3 all feed the single recovery ledger (stage 4) via
+`recovery_report.record()` / `record_heal()`; the ledger is duck-typed so it never
+imports the healers, keeping the dependency graph acyclic.
+
 ## Data Flow Detail
 
 ### Step 1: Extraction

@@ -22,7 +22,8 @@ import json
 import logging
 import os
 import re
-import uuid
+
+from .fabric_item import logical_id, write_platform
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class ThinReportGenerator:
     """Generates a thin report (.Report/) referencing an external semantic model."""
 
     def __init__(self, semantic_model_name: str, output_dir: str,
-                 live_connection: str = None):
+                 live_connection: str = None, item_id: str = None):
         """
         Args:
             semantic_model_name: Name of the shared semantic model directory.
@@ -43,6 +44,7 @@ class ThinReportGenerator:
         self.semantic_model_name = semantic_model_name
         self.output_dir = os.path.abspath(output_dir)
         self.live_connection = live_connection
+        self.item_id = item_id
 
     def generate_thin_report(self, report_name: str,
                              converted_objects: dict,
@@ -81,18 +83,12 @@ class ThinReportGenerator:
 
     def _write_platform(self, report_dir: str, report_name: str):
         """Write the .platform file for the report."""
-        platform = {
-            "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
-            "metadata": {
-                "type": "Report",
-                "displayName": report_name,
-            },
-            "config": {
-                "version": "2.0",
-                "logicalId": str(uuid.uuid4()),
-            },
-        }
-        _write_json(os.path.join(report_dir, '.platform'), platform)
+        write_platform(
+            report_dir,
+            'Report',
+            report_name,
+            self.item_id or logical_id(report_name, 'Report'),
+        )
 
     def _write_definition_pbir(self, report_dir: str):
         """Write definition.pbir with byPath or byConnection reference."""

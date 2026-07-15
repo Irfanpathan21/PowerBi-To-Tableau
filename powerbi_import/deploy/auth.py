@@ -25,6 +25,7 @@ class FabricAuthenticator:
 
     AUTHORITY_URL = 'https://login.microsoftonline.com'
     SCOPE = ['https://analysis.windows.net/powerbi/api/.default']
+    STORAGE_SCOPE = ['https://storage.azure.com/.default']
 
     def __init__(self, use_managed_identity=False):
         """
@@ -66,9 +67,9 @@ class FabricAuthenticator:
                 client_secret=settings.fabric_client_secret,
             )
 
-    def get_token(self):
+    def get_token(self, scopes=None):
         """
-        Get access token for Fabric API.
+        Get an access token for the requested API scopes.
 
         Returns:
             Access token string
@@ -77,7 +78,7 @@ class FabricAuthenticator:
             Exception: If token acquisition fails
         """
         try:
-            token = self._credential.get_token(*self.SCOPE)
+            token = self._credential.get_token(*(scopes or self.SCOPE))
             logger.debug('Successfully acquired access token')
             self._token = token.token
             return self._token
@@ -85,16 +86,16 @@ class FabricAuthenticator:
             logger.error(f'Failed to acquire access token: {str(e)}')
             raise
 
-    def get_headers(self):
+    def get_headers(self, scopes=None, content_type='application/json'):
         """
         Get HTTP headers with authorization token.
 
         Returns:
             Dictionary of HTTP headers
         """
-        token = self.get_token()
+        token = self.get_token(scopes=scopes)
         return {
             'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json',
+            'Content-Type': content_type,
             'Accept': 'application/json',
         }

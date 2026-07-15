@@ -35,6 +35,11 @@ FABRIC_RETRY_ATTEMPTS=3
 FABRIC_RETRY_DELAY=5
 ```
 
+Fabric-native deployment uses the `FABRIC_*` identity above. PBIP deployment
+uses `PBI_TENANT_ID`, `PBI_CLIENT_ID`, and `PBI_CLIENT_SECRET` (or
+`PBI_ACCESS_TOKEN`) instead. Do not pass client secrets as command-line
+arguments.
+
 ## Authentication Methods
 
 ### Service Principal (Recommended for CI/CD)
@@ -58,17 +63,30 @@ Skip the deployment step and open generated `.pbip` files directly in Power BI D
 ### Manual Deployment
 
 ```bash
-# Generate the project
-python migrate.py workbook.twbx --output-dir ./output
+# Generate and deploy the six-item Fabric-native project
+python migrate.py workbook.twbx \
+  --output-format fabric \
+  --output-dir ./output \
+  --deploy <workspace-guid>
 
-# Deploy to Fabric (requires azure-identity and requests)
-python -c "
-from powerbi_import.deployer import FabricDeployer
-deployer = FabricDeployer()
-report = deployer.deploy_artifacts_batch('./output')
-print(report.summary())
-"
+# Also run the deployed Data Pipeline and wait for completion
+python migrate.py workbook.twbx \
+  --output-format fabric \
+  --output-dir ./output \
+  --deploy <workspace-guid> \
+  --deploy-refresh
 ```
+
+Before the first remote write, deployment validates the local six-artifact
+bundle and every Notebook `Files/...` reference. It then performs a read-only
+workspace preflight using `GET /workspaces/{id}` and
+`GET /workspaces/{id}/items`. A failed preflight creates no Fabric items and
+uploads no OneLake files.
+
+With `--deploy-refresh`, success requires the deployed Data Pipeline to reach
+the terminal `Completed` state. Preflight, deployment, or Pipeline failure is
+included in the migration summary and produces a nonzero process exit code.
+Power BI Desktop is never opened unless `--desktop-probe` is explicitly set.
 
 ### CI/CD Deployment (GitHub Actions)
 

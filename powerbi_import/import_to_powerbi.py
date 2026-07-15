@@ -346,6 +346,7 @@ class PowerBIImporter:
                 calendar_end=calendar_end,
                 culture=culture,
                 languages=languages,
+                include_report=False,
             )
             sm_dir = os.path.join(
                 project_dir,

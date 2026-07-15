@@ -17,7 +17,10 @@ from .calc_column_utils import (
     sanitize_calc_col_name,
     tableau_formula_to_pyspark,
 )
+from .fabric_item import logical_id, write_platform
 from .fabric_naming import make_python_var as _make_var_name
+from .fabric_naming import sanitize_table_name as _sanitize_table_name
+from .fabric_sources import is_file_connection, table_connection
 
 # Connection type → PySpark read snippet
 _SPARK_READ_TEMPLATES = {
@@ -97,12 +100,11 @@ _SPARK_READ_TEMPLATES = {
         '    .load("Files/{filename}")\n'
     ),
     'Excel': (
-        '# Read Excel file (requires com.crealytics:spark-excel)\n'
+        '# Read the Excel sheet converted to CSV during local staging\n'
         'df_{table_var} = spark.read \\\n'
-        '    .format("com.crealytics.spark.excel") \\\n'
+        '    .format("csv") \\\n'
         '    .option("header", "true") \\\n'
         '    .option("inferSchema", "true") \\\n'
-        "    .option(\"dataAddress\", \"\\'{table_name}\\'!A1\") \\\n"
         '    .load("Files/{filename}")\n'
     ),
     'Custom SQL': (
@@ -124,6 +126,18 @@ def _make_notebook(cells, metadata=None):
     """Create a Jupyter notebook JSON structure."""
     if metadata is None:
         metadata = {}
+    lakehouse_name = metadata.get('lakehouse_name', '')
+    lakehouse_id = metadata.get('lakehouse_id', '')
+    workspace_id = metadata.get('workspace_id', '')
+    dependencies = {}
+    if lakehouse_id and workspace_id:
+        dependencies = {
+            'lakehouse': {
+                'default_lakehouse': lakehouse_id,
+                'default_lakehouse_workspace_id': workspace_id,
+                'default_lakehouse_name': lakehouse_name,
+            },
+        }
     return {
         'nbformat': 4,
         'nbformat_minor': 5,
@@ -148,10 +162,11 @@ def _make_notebook(cells, metadata=None):
             },
             'trident': {
                 'lakehouse': {
-                    'default_lakehouse_name': metadata.get('lakehouse_name', ''),
+                    'default_lakehouse_name': lakehouse_name,
                     'known_lakehouses': [],
                 },
             },
+            'dependencies': dependencies,
             **metadata,
         },
         'cells': cells,
@@ -187,9 +202,13 @@ def _code_cell(source, cell_id=None):
 class NotebookGenerator:
     """Generates PySpark notebooks for Fabric ETL pipelines."""
 
-    def __init__(self, project_dir, project_name):
+    def __init__(self, project_dir, project_name, item_id=None,
+                 lakehouse_id=None, workspace_id=None):
         self.project_dir = project_dir
         self.project_name = project_name
+        self.item_id = item_id or logical_id(project_name, 'Notebook')
+        self.lakehouse_id = lakehouse_id or logical_id(project_name, 'Lakehouse')
+        self.workspace_id = workspace_id or logical_id(project_name, 'Workspace')
         self.notebook_dir = os.path.join(project_dir, f'{project_name}.Notebook')
         os.makedirs(self.notebook_dir, exist_ok=True)
 
@@ -220,7 +239,7 @@ class NotebookGenerator:
             json.dump(etl_nb, f, indent=2, ensure_ascii=False)
 
         total_cells = len(etl_cells)
-        notebooks = 1
+        deployable_cells = list(etl_cells)
 
         if calculations:
             transform_cells = self._generate_transformation_cells(
@@ -236,11 +255,29 @@ class NotebookGenerator:
                 json.dump(transform_nb, f, indent=2, ensure_ascii=False)
 
             total_cells += len(transform_cells)
-            notebooks += 1
+            deployable_cells.extend(transform_cells)
+
+        deployable_nb = _make_notebook(deployable_cells, {
+            'lakehouse_name': f'{self.project_name}_Lakehouse',
+            'lakehouse_id': self.lakehouse_id,
+            'workspace_id': self.workspace_id,
+            'description': f'ETL and transformations for {self.project_name}',
+        })
+        deployable_path = os.path.join(
+            self.notebook_dir, 'artifact.content.ipynb')
+        with open(deployable_path, 'w', encoding='utf-8') as f:
+            json.dump(deployable_nb, f, indent=2, ensure_ascii=False)
+
+        write_platform(
+            self.notebook_dir,
+            'Notebook',
+            f'{self.project_name}_Notebook',
+            self.item_id,
+        )
 
         return {
             'cells': total_cells,
-            'notebooks': notebooks,
+            'notebooks': 1,
             'calc_columns': len(calc_columns),
         }
 
@@ -272,24 +309,14 @@ class NotebookGenerator:
         seen_tables = set()
 
         for ds in datasources:
-            connection = ds.get('connection', {})
-            if not connection and ds.get('connections'):
-                connection = ds['connections'][0]
-            connection_map = ds.get('connection_map', {})
-
             for table in ds.get('tables', []):
                 table_name = table.get('name', '')
                 if not table_name or table_name in seen_tables:
                     continue
+                conn = table_connection(ds, table)
+                if not is_file_connection(conn):
+                    continue
                 seen_tables.add(table_name)
-
-                table_conn = table.get('connection_details', {})
-                if table_conn and table_conn.get('type'):
-                    conn = table_conn
-                elif table.get('connection') and table.get('connection') in connection_map:
-                    conn = connection_map[table['connection']]
-                else:
-                    conn = connection
 
                 tables_info.append({
                     'name': table_name,
@@ -309,12 +336,15 @@ class NotebookGenerator:
             conn_type = conn.get('type', 'Unknown')
             details = conn.get('details', {})
             table_var = _make_var_name(table_name)
-            lh_table = re.sub(r'[^a-zA-Z0-9_]', '_', table_name).lower()
+            lh_table = _sanitize_table_name(table_name)
 
             cells.append(_markdown_cell(f'### Table: `{table_name}` ({conn_type})'))
 
             template = _SPARK_READ_TEMPLATES.get(conn_type, '')
             if template:
+                filename = details.get('filename', '')
+                if conn_type == 'Excel':
+                    filename = f'{lh_table}.csv'
                 code = template.format(
                     table_var=table_var,
                     table_name=table_name,
@@ -325,7 +355,7 @@ class NotebookGenerator:
                     warehouse=details.get('warehouse', ''),
                     project=details.get('project', ''),
                     dataset=details.get('dataset', ''),
-                    filename=details.get('filename', ''),
+                    filename=filename,
                     delimiter=details.get('delimiter', ','),
                     service=details.get('service', ''),
                     custom_sql='',
@@ -353,7 +383,7 @@ class NotebookGenerator:
                 sql_name = sql_entry.get('name', 'Custom Query')
                 sql_query = sql_entry.get('query', '')
                 table_var = _make_var_name(sql_name)
-                lh_table = re.sub(r'[^a-zA-Z0-9_]', '_', sql_name).lower()
+                lh_table = _sanitize_table_name(sql_name)
 
                 cells.append(_markdown_cell(f'### {sql_name}'))
                 code = (
@@ -408,7 +438,7 @@ class NotebookGenerator:
             for table in ds.get('tables', []):
                 t_name = table.get('name', '')
                 if t_name:
-                    lh_name = re.sub(r'[^a-zA-Z0-9_]', '_', t_name).lower()
+                    lh_name = _sanitize_table_name(t_name)
                     if main_table_name is None:
                         main_table_name = lh_name
                     elif len(table.get('columns', [])) > 0:

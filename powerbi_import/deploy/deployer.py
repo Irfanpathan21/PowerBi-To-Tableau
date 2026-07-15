@@ -14,9 +14,11 @@ Usage:
     deployer.deploy_dataset(workspace_id, 'MyDataset', config)
 """
 
+import base64
 import os
 import json
 import logging
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,18 @@ class ArtifactType:
 
 class FabricDeployer:
     """Deploy Fabric artifacts to a workspace."""
+
+    _PBI_CLUSTER_DATASOURCES_URL = (
+        'https://api.powerbi.com/v2.0/myorg/me/gatewayClusterDatasources')
+
+    _FABRIC_PROJECT_ARTIFACTS = (
+        ('Lakehouse', 'Lakehouse'),
+        ('Dataflow', 'Dataflow'),
+        ('Notebook', 'Notebook'),
+        ('SemanticModel', 'SemanticModel'),
+        ('Report', 'Report'),
+        ('Pipeline', 'DataPipeline'),
+    )
 
     def __init__(self, client=None):
         """
@@ -188,6 +202,498 @@ class FabricDeployer:
                 results.append({'file': str(artifact_file), 'error': str(e)})
 
         return results
+
+    def deploy_fabric_project(self, workspace_id, project_dir, project_name,
+                              overwrite=True):
+        """Deploy a generated six-artifact Fabric-native project.
+
+        Logical IDs embedded by the generators are resolved to the physical IDs
+        returned by Fabric as each dependency is created or discovered.
+
+        Args:
+            workspace_id: Target Fabric workspace ID.
+            project_dir: Directory containing the generated artifact folders.
+            project_name: Generated project name and artifact folder prefix.
+            overwrite: Update same-name items when they already exist.
+
+        Returns:
+            Dict containing deployment status and physical item IDs by type.
+
+        Raises:
+            FileNotFoundError: If an artifact directory or manifest is missing.
+            ValueError: If a manifest is invalid or overwrite is disabled for an
+                existing item.
+        """
+        project_path = Path(project_dir)
+        artifacts = self._discover_fabric_project(project_path, project_name)
+        logical_workspace_ids = self._logical_workspace_ids(artifacts)
+        replacements = {
+            logical_id: workspace_id for logical_id in logical_workspace_ids
+        }
+        item_ids = {}
+        statuses = []
+        data_files = self._project_data_files(project_path)
+        self._validate_notebook_file_references(
+            artifacts, {path.name.casefold() for path in data_files})
+        preflight = self.preflight_fabric_workspace(workspace_id)
+        uploaded_files = []
+
+        for artifact in artifacts:
+            item_type = artifact['type']
+            display_name = artifact['display_name']
+            existing = self._find_item(
+                workspace_id, display_name, item_type)
+            if existing and not overwrite:
+                raise ValueError(
+                    f"Fabric item '{display_name}' ({item_type}) already "
+                    'exists and overwrite is disabled')
+
+            dataflow_connections = None
+            if (item_type == 'Dataflow'
+                    and self._dataflow_has_queries(artifact)):
+                dataflow_connections = [self._ensure_lakehouse_connection(
+                    workspace_id, item_ids.get('Lakehouse'))]
+            parts = self._package_fabric_parts(
+                artifact, replacements, workspace_id, item_ids,
+                dataflow_connections=dataflow_connections)
+            if existing:
+                physical_id = existing.get('id')
+                if not physical_id:
+                    raise ValueError(
+                        f"Existing Fabric item '{display_name}' has no ID")
+                response = self.client.post(
+                    f'/workspaces/{workspace_id}/items/{physical_id}'
+                    '/updateDefinition?updateMetadata=true',
+                    data={'definition': {'parts': parts}},
+                )
+                status = 'updated'
+            else:
+                response = self.client.post(
+                    f'/workspaces/{workspace_id}/items',
+                    data={
+                        'displayName': display_name,
+                        'type': item_type,
+                        'definition': {'parts': parts},
+                    },
+                )
+                physical_id = response.get('id')
+                if not physical_id:
+                    raise ValueError(
+                        f"Fabric did not return an ID for '{display_name}' "
+                        f'({item_type})')
+                status = 'created'
+
+            item_ids[item_type] = physical_id
+            replacements[artifact['logical_id']] = physical_id
+            if item_type == 'Lakehouse':
+                uploaded_files = self._upload_project_data(
+                    workspace_id, physical_id, project_path, data_files)
+            statuses.append({
+                'type': item_type,
+                'display_name': display_name,
+                'logical_id': artifact['logical_id'],
+                'item_id': physical_id,
+                'status': status,
+                'parts': [part['path'] for part in parts],
+                'response': response,
+            })
+
+        return {
+            'success': True,
+            'workspace_id': workspace_id,
+            'project_name': project_name,
+            'preflight': preflight,
+            'item_ids': item_ids,
+            'uploaded_files': uploaded_files,
+            'artifacts': statuses,
+        }
+
+    def preflight_fabric_workspace(self, workspace_id):
+        """Verify read access to the target workspace before remote writes."""
+        if not str(workspace_id or '').strip():
+            raise ValueError('A target Fabric workspace ID is required')
+
+        workspace = self.client.get_workspace(workspace_id)
+        if not isinstance(workspace, dict) or not workspace.get('id'):
+            raise RuntimeError(
+                'Fabric workspace preflight returned no workspace ID')
+        items = self.client.list_items(workspace_id)
+        if not isinstance(items, dict) or not isinstance(
+                items.get('value', []), list):
+            raise RuntimeError(
+                'Fabric workspace preflight returned an invalid item listing')
+        return {
+            'workspace_id': workspace['id'],
+            'workspace_name': workspace.get('displayName', ''),
+            'accessible_items': len(items.get('value', [])),
+        }
+
+    @staticmethod
+    def _dataflow_has_queries(artifact):
+        """Return whether a generated Dataflow contains source queries."""
+        definition_path = artifact['directory'] / 'dataflow_definition.json'
+        try:
+            definition = json.loads(definition_path.read_text(encoding='utf-8'))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f'Invalid Dataflow definition: {definition_path}') from exc
+        return bool(definition.get('queries'))
+
+    def run_fabric_pipeline(self, workspace_id, pipeline_id):
+        """Run a deployed Data Pipeline and wait for its terminal job state."""
+        if not pipeline_id:
+            raise ValueError('A deployed DataPipeline item ID is required')
+        result = self.client.post(
+            f'/workspaces/{workspace_id}/items/{pipeline_id}'
+            '/jobs/instances?jobType=Pipeline',
+            data={},
+        )
+        status = str(result.get('status', '')).lower()
+        if status != 'completed':
+            raise RuntimeError(
+                'Fabric Data Pipeline did not complete successfully: '
+                f'{result.get("status", "unknown")}')
+        return result
+
+    def _discover_fabric_project(self, project_dir, project_name):
+        """Read and validate the ordered Fabric artifact manifests."""
+        artifacts = []
+        for suffix, expected_type in self._FABRIC_PROJECT_ARTIFACTS:
+            artifact_dir = project_dir / f'{project_name}.{suffix}'
+            if not artifact_dir.is_dir():
+                raise FileNotFoundError(
+                    f'Missing Fabric artifact directory: {artifact_dir}')
+
+            platform_path = artifact_dir / '.platform'
+            if not platform_path.is_file():
+                raise FileNotFoundError(
+                    f'Missing Fabric artifact manifest: {platform_path}')
+            try:
+                platform = json.loads(platform_path.read_text(encoding='utf-8'))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    f'Invalid Fabric artifact manifest: {platform_path}') from exc
+
+            metadata = platform.get('metadata', {})
+            item_type = metadata.get('type')
+            logical_id = platform.get('config', {}).get('logicalId')
+            if item_type != expected_type:
+                raise ValueError(
+                    f'{platform_path} has type {item_type!r}; '
+                    f'expected {expected_type!r}')
+            if not isinstance(logical_id, str) or not logical_id:
+                raise ValueError(f'{platform_path} has no logicalId')
+
+            display_name = metadata.get('displayName') or project_name
+            if not isinstance(display_name, str) or not display_name:
+                raise ValueError(f'{platform_path} has no displayName')
+            artifacts.append({
+                'suffix': suffix,
+                'type': item_type,
+                'display_name': display_name,
+                'logical_id': logical_id,
+                'directory': artifact_dir,
+            })
+        return artifacts
+
+    @staticmethod
+    def _logical_workspace_ids(artifacts):
+        """Infer generated logical workspace IDs from text definitions."""
+        workspace_ids = set()
+        patterns = (
+            r'"workspaceId"\s*:\s*"([^"]+)"',
+            r'"default_lakehouse_workspace_id"\s*:\s*"([^"]+)"',
+            r'workspaceId\s*=\s*"([^"]+)"',
+        )
+        for artifact in artifacts:
+            for path in artifact['directory'].rglob('*'):
+                if not path.is_file():
+                    continue
+                try:
+                    text = path.read_text(encoding='utf-8')
+                except (OSError, UnicodeDecodeError):
+                    continue
+                for pattern in patterns:
+                    workspace_ids.update(re.findall(pattern, text))
+        return workspace_ids
+
+    @staticmethod
+    def _project_data_files(project_dir):
+        """Return canonical staged files that belong in Lakehouse Files."""
+        data_dir = project_dir / 'Data'
+        if not data_dir.is_dir():
+            return []
+        return sorted(
+            path for path in data_dir.rglob('*.csv') if path.is_file())
+
+    @staticmethod
+    def _validate_notebook_file_references(artifacts, available_names):
+        """Fail before deployment when Notebook Files references are missing."""
+        notebook = next(
+            artifact for artifact in artifacts if artifact['type'] == 'Notebook')
+        path = notebook['directory'] / 'artifact.content.ipynb'
+        try:
+            content = path.read_text(encoding='utf-8')
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(f'Invalid Notebook definition: {path}') from exc
+        referenced = {
+            Path(value.replace('\\', '/')).name.casefold()
+            for value in re.findall(r'Files/([^"\s]+)', content)
+        }
+        missing = sorted(referenced - available_names)
+        if missing:
+            raise FileNotFoundError(
+                'Notebook references unstaged Lakehouse file(s): '
+                + ', '.join(missing))
+
+    def _upload_project_data(self, workspace_id, lakehouse_id, project_dir,
+                             data_files):
+        """Upload canonical local files to the deployed Lakehouse Files area."""
+        data_dir = project_dir / 'Data'
+        uploaded = []
+        for path in data_files:
+            relative_path = path.relative_to(data_dir).as_posix()
+            result = self.client.upload_onelake_file(
+                workspace_id,
+                lakehouse_id,
+                f'Files/{relative_path}',
+                path.read_bytes(),
+            )
+            uploaded.append(result)
+        return uploaded
+
+    def _package_fabric_parts(self, artifact, replacements, workspace_id,
+                              item_ids, dataflow_connections=None):
+        """Build InlineBase64 definition parts for one Fabric item."""
+        files = self._fabric_part_files(artifact)
+        parts = []
+        for path in files:
+            relative_path = path.relative_to(
+                artifact['directory']).as_posix()
+            content = path.read_bytes()
+            try:
+                text = content.decode('utf-8')
+            except UnicodeDecodeError:
+                pass
+            else:
+                for logical_id, physical_id in replacements.items():
+                    text = text.replace(logical_id, physical_id)
+                if (artifact['type'] == 'Report'
+                        and relative_path == 'definition.pbir'):
+                    text = self._bind_report_to_semantic_model(
+                        text, workspace_id, item_ids)
+                if (artifact['type'] == 'Dataflow'
+                        and relative_path == 'queryMetadata.json'):
+                    text = self._bind_dataflow_connections(
+                        text, dataflow_connections or [])
+                content = text.encode('utf-8')
+
+            parts.append({
+                'path': relative_path,
+                'payload': base64.b64encode(content).decode('ascii'),
+                'payloadType': 'InlineBase64',
+            })
+        return parts
+
+    def _ensure_lakehouse_connection(self, workspace_id, lakehouse_id):
+        """Return a Dataflow binding for the deployed Lakehouse destination."""
+        if not lakehouse_id:
+            raise ValueError(
+                'Dataflow deployment requires a deployed Lakehouse')
+
+        connection = self._find_lakehouse_connection(
+            workspace_id, lakehouse_id)
+        if connection is None:
+            connection = self._create_lakehouse_connection(
+                workspace_id, lakehouse_id)
+
+        datasource_id = connection.get('id')
+        if not datasource_id:
+            raise ValueError('Fabric Lakehouse connection has no ID')
+        cluster_id = self._resolve_connection_cluster_id(datasource_id)
+        return {
+            'connectionId': json.dumps({
+                'ClusterId': cluster_id,
+                'DatasourceId': datasource_id,
+            }, separators=(',', ':')),
+            'kind': 'Lakehouse',
+            'path': 'Lakehouse',
+        }
+
+    def _find_lakehouse_connection(self, workspace_id, lakehouse_id):
+        """Find a visible Lakehouse connection targeting the deployed item."""
+        response = self.client.get('/connections')
+        for connection in response.get('value', []):
+            details = connection.get('connectionDetails', {})
+            if str(details.get('type', '')).lower() != 'lakehouse':
+                continue
+            parameters = {
+                str(param.get('name', '')).lower(): str(param.get('value', ''))
+                for param in details.get('parameters', [])
+            }
+            if (parameters.get('workspaceid') == str(workspace_id)
+                    and parameters.get('lakehouseid') == str(lakehouse_id)):
+                return connection
+        return None
+
+    def _create_lakehouse_connection(self, workspace_id, lakehouse_id):
+        """Create a Workspace Identity Lakehouse connection when supported."""
+        response = self.client.get('/connections/supportedConnectionTypes')
+        lakehouse_type = next((
+            item for item in response.get('value', [])
+            if str(item.get('type', '')).lower() == 'lakehouse'
+        ), None)
+        if lakehouse_type is None:
+            raise RuntimeError(
+                'No Lakehouse connection targets the deployed item and the '
+                'tenant does not advertise Lakehouse connection creation')
+
+        credentials = {
+            str(value).lower()
+            for value in lakehouse_type.get('supportedCredentialTypes', [])
+        }
+        if 'workspaceidentity' not in credentials:
+            raise RuntimeError(
+                'No Lakehouse connection targets the deployed item and '
+                'WorkspaceIdentity is not supported by this tenant')
+
+        methods = lakehouse_type.get('creationMethods', [])
+        creation = next((
+            method for method in methods
+            if str(method.get('name', method.get('creationMethod', ''))).lower()
+            == 'lakehouse'
+        ), methods[0] if methods else None)
+        if creation is None:
+            raise RuntimeError(
+                'Lakehouse connection creation metadata has no creation method')
+
+        parameter_types = {
+            str(param.get('name', '')).lower(): param.get('dataType', 'Text')
+            for param in creation.get('parameters', [])
+        }
+        connection = self.client.post('/connections', data={
+            'connectivityType': 'ShareableCloud',
+            'displayName': f'Lakehouse-{lakehouse_id}',
+            'connectionDetails': {
+                'type': 'Lakehouse',
+                'creationMethod': creation.get(
+                    'name', creation.get('creationMethod', 'Lakehouse')),
+                'parameters': [
+                    {
+                        'dataType': parameter_types.get('workspaceid', 'Text'),
+                        'name': 'workspaceId',
+                        'value': workspace_id,
+                    },
+                    {
+                        'dataType': parameter_types.get('lakehouseid', 'Text'),
+                        'name': 'lakehouseId',
+                        'value': lakehouse_id,
+                    },
+                ],
+            },
+            'privacyLevel': 'Organizational',
+            'credentialDetails': {
+                'singleSignOnType': 'None',
+                'connectionEncryption': 'Encrypted',
+                'skipTestConnection': False,
+                'credentials': {'credentialType': 'WorkspaceIdentity'},
+            },
+        })
+        if not connection.get('id'):
+            raise RuntimeError(
+                'Fabric did not return an ID for the Lakehouse connection')
+        return connection
+
+    def _resolve_connection_cluster_id(self, datasource_id):
+        """Resolve the Power BI cluster ID required by Dataflow metadata."""
+        response = self.client.get_absolute(
+            self._PBI_CLUSTER_DATASOURCES_URL)
+        for datasource in response.get('value', []):
+            if str(datasource.get('id')) == str(datasource_id):
+                cluster_id = datasource.get('clusterId')
+                if cluster_id:
+                    return cluster_id
+        raise RuntimeError(
+            'Lakehouse connection is not visible in '
+            f'gatewayClusterDatasources: {datasource_id}')
+
+    @staticmethod
+    def _bind_dataflow_connections(text, connections):
+        """Inject resolved connection bindings into queryMetadata.json."""
+        try:
+            metadata = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError('Invalid Dataflow queryMetadata.json') from exc
+        metadata['connections'] = connections
+        return json.dumps(metadata, indent=2, ensure_ascii=False)
+
+    @staticmethod
+    def _fabric_part_files(artifact):
+        """Return official deployable parts, excluding generator auxiliaries."""
+        artifact_dir = artifact['directory']
+        item_type = artifact['type']
+        platform = artifact_dir / '.platform'
+        if item_type == 'Lakehouse':
+            files = [platform, artifact_dir / 'lakehouse.metadata.json']
+        elif item_type == 'Dataflow':
+            files = [platform, artifact_dir / 'mashup.pq',
+                     artifact_dir / 'queryMetadata.json']
+        elif item_type == 'Notebook':
+            files = [platform, artifact_dir / 'artifact.content.ipynb']
+        elif item_type == 'SemanticModel':
+            files = [platform, artifact_dir / 'definition.pbism']
+            definition_dir = artifact_dir / 'definition'
+            if definition_dir.is_dir():
+                files.extend(sorted(
+                    path for path in definition_dir.rglob('*')
+                    if path.is_file()))
+        elif item_type == 'Report':
+            files = [platform, artifact_dir / 'definition.pbir']
+            definition_dir = artifact_dir / 'definition'
+            if definition_dir.is_dir():
+                files.extend(sorted(
+                    path for path in definition_dir.rglob('*')
+                    if path.is_file()))
+        elif item_type == 'DataPipeline':
+            files = [platform, artifact_dir / 'pipeline-content.json']
+        else:
+            raise ValueError(f'Unsupported Fabric project item: {item_type}')
+
+        missing = [str(path) for path in files if not path.is_file()]
+        if missing:
+            raise FileNotFoundError(
+                'Missing deployable Fabric definition part(s): '
+                + ', '.join(missing))
+        return files
+
+    @staticmethod
+    def _bind_report_to_semantic_model(text, workspace_id, item_ids):
+        """Convert a local PBIR byPath reference to a deployed connection."""
+        try:
+            definition = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError('Invalid Report definition.pbir') from exc
+
+        dataset_reference = definition.get('datasetReference', {})
+        if 'byPath' not in dataset_reference:
+            return text
+        model_id = item_ids.get('SemanticModel')
+        if not model_id:
+            raise ValueError(
+                'Report deployment requires a deployed SemanticModel')
+
+        definition['datasetReference'] = {
+            'byConnection': {
+                'connectionString': (
+                    'Data Source=powerbi://api.powerbi.com/v1.0/myorg/'
+                    f'{workspace_id};Initial Catalog={model_id}'
+                ),
+                'pbiServiceModelId': model_id,
+                'pbiModelVirtualServerName': 'sobe_wowvirtualserver',
+                'pbiModelDatabaseName': model_id,
+            },
+        }
+        return json.dumps(definition, indent=2, ensure_ascii=False)
 
     def _find_item(self, workspace_id, item_name, item_type):
         """

@@ -39,12 +39,16 @@
 ## ⚡ Quick Start
 
 ```bash
-# That's it. One command.
-python migrate.py your_workbook.twbx
+# Default: one workbook to a validated PBIP project
+python migrate.py migrate your_workbook.twbx
 ```
 
 > [!TIP]
-> The output is a `.pbip` project (PBIR v4.0) — just double-click to open in **Power BI Desktop** (March 2025 / CY25SU03 or later).
+> The output is a `.pbip` project (PBIR v4.0). Every PBIP migration automatically
+> runs a static openability gate over project structure, JSON, TMDL, Power Query M,
+> DAX, report/model references, and PBIR schemas. Use `--no-verify-open` only to
+> bypass this gate deliberately. Power BI Desktop is never launched automatically;
+> `--desktop-probe` remains an explicit diagnostic option.
 
 <details>
 <summary><b>📦 Installation</b></summary>
@@ -52,7 +56,7 @@ python migrate.py your_workbook.twbx
 ```bash
 git clone https://github.com/cyphou/Tableau-To-PowerBI.git
 cd Tableau-To-PowerBI
-python migrate.py your_workbook.twbx
+python migrate.py migrate your_workbook.twbx
 ```
 
 **Requirements:** Python 3.12+ • No `pip install` needed — pure standard library.
@@ -66,95 +70,25 @@ pip install tableauhyperapi           # .hyper extract file reading (v2+ format)
 
 ### More ways to migrate
 
-#### 🖥️ Light end-user UI (no extra libraries)
+The public CLI has **8 commands**. These cover the normal workflows:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File .\run_light_ui.ps1
+python migrate.py migrate workbook.twbx
+python migrate.py assess workbook.twbx
+python migrate.py batch folder/ --output-dir ./output
+python migrate.py server https://tableau.example "Sales Dashboard"
+python migrate.py merge wb1.twbx wb2.twbx --model-name "Sales"
+python migrate.py fabric workbook.twbx
+python migrate.py deploy workbook.twbx WORKSPACE_ID
+python migrate.py qa workbook.twbx
 ```
 
-Fallback (direct):
+Run `python migrate.py --help` for this list. Existing flag-based automation remains
+compatible; use `python migrate.py --advanced-help` only when an advanced option is
+required. Secrets belong in environment variables, never in command history.
 
-```bash
-python web/light_ui.py
-```
-
-Built with Tkinter (standard library), this UI is intended for non-technical users:
-- choose a batch folder (batch-only workflow)
-- choose output folder
-- run migration and follow logs live
-- pick one task from: Assess, Migrate, Lineage
-- auto-open HTML report when migration completes (optional toggle)
-- open generated HTML report/comparison and summary CSV in one click
-
-![Light UI batch workflow](docs/images/light_ui_batch.png)
-
-#### 📄 Single workbook
-
-```bash
-python migrate.py workbook.twbx
-python migrate.py workbook.twbx --prep flow.tflx          # with Tableau Prep flow
-python migrate.py workbook.twbx --assess                   # readiness check only
-python migrate.py workbook.twbx --wizard                   # interactive guided wizard
-```
-
-#### 📁 Batch migration
-
-```bash
-python migrate.py --batch folder/ --output-dir /tmp/out
-python migrate.py --global-assess --batch folder/          # cross-workbook merge analysis
-python migrate.py --bulk-assess folder/                    # full portfolio assessment (readiness + merge + prep lineage)
-```
-
-#### ☁️ Tableau Server / Cloud
-
-```bash
-# Single workbook from server
-python migrate.py --server URL --workbook "Name" \
-    --token-name pat --token-secret secret
-
-# All workbooks from a project (with flows & datasources)
-python migrate.py --server URL --server-batch "Project Name" \
-    --server-assets all --server-preserve-folders \
-    --token-name pat --token-secret secret --output-dir ./output
-
-# All workbooks from the entire site
-python migrate.py --server URL --server-batch all \
-    --server-assets all \
-    --token-name pat --token-secret secret --output-dir ./output
-```
-
-#### 🔗 Shared semantic model
-
-```bash
-python migrate.py --shared-model wb1.twbx wb2.twbx --model-name "Sales"
-python migrate.py --shared-model wb1.twbx wb2.twbx --assess-merge    # assess feasibility
-```
-
-#### 🚀 Deploy & output formats
-
-```bash
-python migrate.py workbook.twbx --deploy WORKSPACE_ID --deploy-refresh
-python migrate.py workbook.twbx --output-format fabric     # Lakehouse + Dataflow + Notebook + DirectLake
-python migrate.py --shared-model wb1.twbx wb2.twbx \
-    --deploy-bundle WORKSPACE_ID --bundle-refresh           # shared model bundle deploy
-```
-
-#### ⚡ Quality & optimization
-
-```bash
-python migrate.py workbook.twbx --qa                       # full QA report card (6 checks)
-python migrate.py workbook.twbx --qa-strict                # QA + non-zero exit on any failed check (CI gate)
-python migrate.py workbook.twbx --optimize-dax --time-intelligence auto
-python migrate.py workbook.twbx --check-drift /snapshots   # schema drift detection
-python migrate.py workbook.twbx --autoplay                 # post-migration validation
-```
-
-#### 🌿 Tableau Prep lineage
-
-```bash
-python migrate.py --prep-lineage folder/ flow1.tfl flow2.tfl
-python migrate.py --batch examples/prep_portfolio/ --output-dir /tmp/prep_output
-```
+The optional Tkinter interface remains available through
+`powershell -ExecutionPolicy Bypass -File .\run_light_ui.ps1`.
 
 ---
 
@@ -319,11 +253,11 @@ The pipeline generates **5 Fabric artifacts** from a single Tableau workbook:
 | **Data Pipeline** | 3-stage orchestration: Dataflow → Notebook → Semantic Model refresh |
 
 ```bash
-# Generate Fabric-native output
-python migrate.py workbook.twbx --output-format fabric
+# Generate the complete six-artifact Fabric chain
+python migrate.py fabric workbook.twbx
 
 # With custom output directory
-python migrate.py workbook.twbx --output-format fabric --output-dir /tmp/fabric_output
+python migrate.py fabric workbook.twbx --output-dir /tmp/fabric_output
 ```
 
 ### 🔗 Shared Semantic Model Mode
@@ -351,24 +285,21 @@ flowchart LR
 ```
 
 ```bash
-# Global assessment — identify merge clusters across ALL workbooks
-python migrate.py --global-assess --batch examples/tableau_samples/
-python migrate.py --global-assess wb1.twbx wb2.twbx wb3.twbx wb4.twbx
-
-# Assess merge feasibility for a specific group
-python migrate.py --shared-model wb1.twbx wb2.twbx wb3.twbx --assess-merge
+# Assess merge feasibility
+python migrate.py merge wb1.twbx wb2.twbx wb3.twbx --assess-merge
 
 # Generate shared model + thin reports
-python migrate.py --shared-model wb1.twbx wb2.twbx wb3.twbx --model-name "Shared Sales"
+python migrate.py merge wb1.twbx wb2.twbx wb3.twbx --model-name "Shared Sales"
 
 # Deploy shared model to Fabric workspace as a bundle
-python migrate.py --shared-model wb1.twbx wb2.twbx --deploy-bundle WORKSPACE_ID --bundle-refresh
-
-# Deploy an existing shared model project to Fabric
-python migrate.py --deploy-bundle WORKSPACE_ID --output-dir artifacts/shared/SharedSales
+python migrate.py merge wb1.twbx wb2.twbx --deploy-bundle WORKSPACE_ID --bundle-refresh
 ```
 
-The `--global-assess` flag generates an interactive HTML report with pairwise merge scores, merge clusters, and ready-to-run commands:
+The optional `--assess-merge` mode generates an interactive report with pairwise
+merge scores, conflicts, and a merge recommendation. Portfolio-wide assessment and
+deployment of an existing bundle are documented as advanced compatibility workflows
+in [Enterprise Guide](docs/ENTERPRISE_GUIDE.md) and
+[Deployment Guide](docs/DEPLOYMENT_GUIDE.md).
 
 ![Global Assessment — Cross-Workbook Merge Analysis](docs/images/share_assessment.png)
 ### 📋 Tableau Prep Flow Migration
@@ -423,13 +354,10 @@ flowchart LR
 
 ```bash
 # Batch — analyze & export all .tfl files in a folder
-python migrate.py --batch examples/prep_portfolio/ --output-dir /tmp/prep_output
-
-# Cross-flow lineage analysis (dedicated mode)
-python migrate.py --prep-lineage examples/prep_portfolio/ flow1.tfl flow2.tfl
+python migrate.py batch examples/prep_portfolio/ --output-dir /tmp/prep_output
 
 # Pair a prep flow with a workbook (merge M expressions into .pbip)
-python migrate.py workbook.twbx --prep flow.tflx
+python migrate.py migrate workbook.twbx --prep flow.tflx
 ```
 
 The lineage report shows cross-flow dependencies, merge candidates, and data provenance across your entire Prep portfolio:
@@ -791,17 +719,18 @@ TableauToPowerBI/
 ## 🚀 Deployment
 
 <details>
-<summary><b>Power BI Service</b></summary>
+<summary><b>Fabric end-to-end deployment</b></summary>
 
 ```bash
-# Set environment variables
-export PBI_TENANT_ID="your-tenant-guid"
-export PBI_CLIENT_ID="your-app-client-id"
-export PBI_CLIENT_SECRET="your-app-secret"
-
-# Migrate + deploy in one command
-python migrate.py your_workbook.twbx --deploy WORKSPACE_ID --deploy-refresh
+# Set FABRIC_TENANT_ID, FABRIC_CLIENT_ID, and FABRIC_CLIENT_SECRET first.
+python migrate.py deploy your_workbook.twbx WORKSPACE_ID
 ```
+
+The command generates and deploys Lakehouse, Dataflow Gen2, Notebook, Direct Lake
+Semantic Model, Power BI report, and Pipeline artifacts. It then runs the Pipeline
+and returns a nonzero exit code unless the run completes successfully. See the
+[Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for identity setup, read-only preflight,
+and the legacy Power BI Service deployment workflow.
 
 Or programmatically:
 

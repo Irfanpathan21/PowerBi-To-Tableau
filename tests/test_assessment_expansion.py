@@ -200,7 +200,7 @@ class TestRunAssessmentExpanded(unittest.TestCase):
             }],
         )
         report = run_assessment(ext)
-        self.assertEqual(len(report.categories), 14)
+        self.assertEqual(len(report.categories), 15)
 
     def test_score_consistency(self):
         """Same input → same output."""

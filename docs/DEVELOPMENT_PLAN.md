@@ -1,11 +1,35 @@
 # Development Plan — Tableau to Power BI Migration Tool
 
-**Version:** v38.4.0  
-**Date:** 2026-06-10  
-**Current state:** v38.4.0 shipped — **8,746 tests** in latest full run, 0 failures. Includes v38.3 empty-visual recovery and v38.4 pixel-fidelity hardening (font cascade, visual background/border, Tableau line-break sentinel cleanup).  
+**Historical baseline:** v38.4.0
+**Last audited:** 2026-07-15
+**Current planning target:** v45.0.0 — migration performance and Fabric contract completion. The 2026-07-15 executable audit found that Fabric generation is a scaffold rather than an operational Direct Lake chain; see the correction below and the v45 plan.
 **Previous baseline:** v3.5.0 — 887 → v4.0.0 — 1,387 → v5.0.0 — 1,543 → v5.1.0 — 1,595 → v5.5.0 — 1,777 → v6.0.0 — 1,889 → v6.1.0 — 1,997 → v7.0.0 — 2,057 → Sprint 21 — 2,066 → v8.0.0 — 2,275 → Sprint 27 — 2,542 → Sprint 28 — 2,616 → Sprint 29 — 2,666 → v9.0.0 — 3,196 → v10.0.0 — 3,342 → v11.0.0 — 3,459 → v12.0.0 — 3,729 → v13.0.0 — 3,847 → v14.0.0 — 3,925 → v15.0.0 — 3,988 → v15.0.1 — 3,996 → v16.0.0 — 4,131 → v17.0.0 — 4,219 → Sprint 63 — 4,762 → Sprint 64 — 4,813 → v19.0.0 — 4,923 → v21.0.0 — 5,170 → v22.0.0 — 5,683 → v23.0.0 — 5,782 → v24.0.0 — 5,927 → v25.0.0 — 6,192 → Sprint 97 — 6,251 → Sprint 98 — 6,263 → v26.0.0 — 6,400 → v27.0.0 — 6,454 → v27.1.0 — 6,532 → v28.0.0 — 6,714 → v28.1.0 — 6,831 → v28.1.1 — 6,831 → v28.2.0 — 6,988 → v28.3.0 — 7,072 → v28.4.0 — 7,072 → v28.5.0 — 7,067 → v28.5.7 — 7,099 → v28.5.8 — 7,099 → v38.2.0 — 8,738 → v38.3.0 — 8,746 → **v38.4.0 — 8,746**
 
-**Next roadmap:** See [ROADMAP.md](ROADMAP.md) for v38.5.0 planned work (floating overlay fidelity + real-world QA hardening).
+**Next roadmap:** See [PERFORMANCE_FABRIC_V45_PLAN.md](PERFORMANCE_FABRIC_V45_PLAN.md) for the measured v45 implementation plan and [ROADMAP.md](ROADMAP.md) for sequencing.
+
+---
+
+## 2026-07-15 Fabric and Performance Audit Correction
+
+The v25 section below is retained as a historical record of the initial Fabric
+generator milestone. Its former "all met" wording described artifact scaffolding,
+not a deployed operational contract. A real CLI run established the following:
+
+- Lakehouse, Dataflow Gen2, Notebook, SemanticModel, and Pipeline directories are
+  generated locally.
+- Semantic-model metadata says `DirectLake`, but its TMDL uses Import/M partitions.
+- Dataflow destinations and pipeline activities do not resolve concrete generated or
+  deployed item identities; six pipeline placeholders remain in the audited output.
+- Only Pipeline and SemanticModel have `.platform` manifests in the audited bundle.
+- Single-workbook Fabric mode does not generate a Power BI report.
+- The focused Fabric and CLI suite passes 173 tests after correcting the CLI package
+  import boundary.
+- The performance suites pass 28 tests and fail 2: `Enterprise_Sales` at 6.10 s and
+  `Complex_Enterprise` at 14.38 s, each against a 5.00 s budget.
+
+Therefore, Fabric support is classified as **scaffold / preview** until the v45
+Direct Lake, binding, report, deployment, and validation gates pass. Power BI Desktop
+remains opt-in only; v45 does not introduce automatic Desktop launch.
 
 ---
 
@@ -167,12 +191,12 @@ v25.0.0 shifts to **semantic intelligence** — making the migration engine deep
 | **94** | Cross-Platform Validation | @assessor, @deployer | ✅ SHIPPED | Query equivalence framework, SSIM screenshot comparison, regression suite generator |
 | **95** | Integration & Release | @orchestrator, @tester | ✅ SHIPPED | Fabric E2E, optimization E2E, v25.0.0 release |
 
-### v25.0.0 Success Criteria — ✅ ALL MET
+### v25.0.0 Historical Success Criteria — Scaffold Generation Met
 
 | Metric | v24.0.0 | Target v25.0.0 | Actual |
 |--------|---------|----------------|--------|
 | Tests | ~5,927 | 6,600+ | **6,192** ✅ |
-| Fabric-native output | ❌ | Direct Lake + Dataflow Gen2 + notebooks | ✅ |
+| Fabric-native output | ❌ | Direct Lake + Dataflow Gen2 + notebooks | Scaffold generated; operational Direct Lake contract deferred to v45 |
 | DAX optimization | ❌ | AST rewriter + TI auto-injection | ✅ |
 | Tableau 2024+ | Partial | Dynamic zones, table extensions, multi-blend | ✅ |
 | Data validation | ❌ | Query equivalence + visual SSIM | ✅ |

@@ -1,14 +1,14 @@
-# Development Roadmap — v22.0.0 → v43.0.0
+# Development Roadmap — v22.0.0 → v45.0.0
 
-**Date:** 2026-06-17
+**Date:** 2026-07-15
 **Baseline:** v40.0.0 — 9,156 tests (Python) + 38 extension unit tests, 0 collection errors
-**Current state:** v40.0.0 shipped (VS Code extension, interactive notebook API v2, plugin SDK v2 + marketplace v2). All core migration, enterprise server, self-healing, Fabric-native, analytics parity, pixel-perfect text/format fidelity, report-packaging, and developer-tooling features complete. 15-agent specialization model. Migration Confidence Score: ≥97/100 (Grade A+). **Next focus (v43.0.0): self-healing maturity & Tableau→Power BI functionality parity.**
+**Current state:** v44.0.0 shipped. A 2026-07-15 executable audit confirmed that the Fabric-native path generates a useful five-artifact scaffold, but is not yet an operational end-to-end Direct Lake solution: semantic-model partitions are Import/M, Dataflow and pipeline bindings are unresolved, three item manifests are missing, and single-workbook Fabric output has no Power BI report. **Next focus (v45.0.0): measured migration performance and completion of the Fabric contract.**
 
 ---
 
 ## Executive Summary
 
-The migration engine has reached **full-platform maturity** — single-workbook, batch, shared-model, Fabric-native, Tableau Server enterprise migration, and zero-error self-healing are all production-ready. v38+ shifts focus to **developer experience**, **report packaging**, **data blending**, **real-time connectors**, and **ecosystem expansion**.
+The migration engine has broad PBIP, batch, shared-model, Tableau Server, self-healing, and developer-tooling coverage. Fabric-native generation currently provides a **preview scaffold**, not a production-ready end-to-end chain. v45 closes that gap and establishes reproducible time and memory budgets before further optimization claims are made.
 
 | Version | Theme | Sprints | Status |
 |---------|-------|---------|--------|
@@ -38,6 +38,39 @@ The migration engine has reached **full-platform maturity** — single-workbook,
 | **v41.0.0** | Real-Time, Streaming & Paginated Reports | 190–194 | Planned |
 | **v42.0.0** | Ecosystem Maturity & GA Polish | 195–199 | Planned |
 | **v43.0.0** | Self-Healing Maturity & Functionality Parity | 209–214 | 🎯 Next |
+| **v44.0.0** | Agentic & Copilot-Native Migration | 215–220 | ✅ Shipped |
+| **v45.0.0** | Performance & Fabric Contract Completion | 222–226 | Planned |
+
+---
+
+## v45.0.0 — Performance & Fabric Contract Completion (Sprints 222–226)
+
+The implementation-grade plan, measured baselines, owners, acceptance criteria, and
+release gates are maintained in
+[PERFORMANCE_FABRIC_V45_PLAN.md](PERFORMANCE_FABRIC_V45_PLAN.md).
+
+Verified audit baseline:
+
+- Superstore Fabric CLI generation: 1.42 s for the current five-directory scaffold.
+- Fabric and CLI focused suites: 173 passed.
+- Performance suites: 28 passed, 2 failed; `Enterprise_Sales` took 6.10 s and
+  `Complex_Enterprise` took 14.38 s against the current 5.00 s budget.
+- Current Fabric output has six unresolved pipeline placeholders, only two item
+  manifests, Import/M semantic-model partitions, and no single-workbook report.
+
+v45 sequencing:
+
+| Sprint | Theme | Primary exit gate |
+|--------|-------|-------------------|
+| **222** | Performance baseline and observability | Phase timings, peak memory, stable benchmark runner, CI trend artifact |
+| **223** | Profile-led hot-path optimization | Current performance regressions resolved without fidelity loss |
+| **224** | True Direct Lake and artifact contract | Entity/Direct Lake partitions, complete manifests, concrete Lakehouse/Dataflow mapping |
+| **225** | Pipeline, Power BI report, and native deployment | Six-artifact chain deploys in dependency order with resolvable IDs |
+| **226** | Contract/performance gates and release | Static cross-validation plus opt-in live Fabric smoke test pass |
+
+Until the Sprint 226 gates pass, documentation and CLI output must describe
+`--output-format fabric` as **Fabric scaffold / preview**, not as a complete
+production-ready Direct Lake migration.
 
 ---
 
@@ -2631,7 +2664,7 @@ No new CLI flags. No schema changes. This patch is fully backward-compatible wit
 
 ---
 
-### Sprint 209 — Functionality Parity Ledger & Gap Registry (@assessor, @reviewer)
+### Sprint 209 — Functionality Parity Ledger & Gap Registry (@assessor, @reviewer) — ✅ DONE (209.1 registry, 209.2 assessment category, 209.3 scorecard, 209.4 `--parity`/`--parity-strict`, 209.5 tests)
 
 **Goal:** Build a single source of truth for Tableau → Power BI feature coverage, and surface it as a per-workbook parity scorecard.
 
@@ -2647,7 +2680,7 @@ No new CLI flags. No schema changes. This patch is fully backward-compatible wit
 
 ---
 
-### Sprint 210 — DAX & Calculation Parity Healing (@dax, @wiring)
+### Sprint 210 — DAX & Calculation Parity Healing (@dax, @wiring) — 🟡 IN PROGRESS (210.3 DONE `dax_healing.py`, 210.4 DONE `m_healing.py`; 210.1/210.2 dax_converter LOD/table-calc pending)
 
 **Goal:** Close the remaining calculation gaps and auto-heal the most common DAX/M defects so calculation parity approaches 100%.
 
@@ -2664,6 +2697,8 @@ No new CLI flags. No schema changes. This patch is fully backward-compatible wit
 ---
 
 ### Sprint 211 — Visual & Analytics-Pane Parity Healing (@visual)
+
+### Sprint 211 — Visual & Analytics-Pane Parity Healing (@visual) — 🟡 IN PROGRESS (211.3 DONE via `powerbi_import/visual_healing.py` + recovery wiring; 211.1/211.2/211.4 pending)
 
 **Goal:** Close visual/analytics-pane gaps and auto-heal malformed visual containers so report parity approaches 100%.
 
@@ -2750,6 +2785,204 @@ No new CLI flags. No schema changes. This patch is fully backward-compatible wit
 
 ---
 
+## v44.0.0 — Agentic & Copilot-Native Migration (Sprints 215–220) ✅ SHIPPED
+
+**Theme:** Turn a mature migration *engine* into a mature migration *assistant*. Where v22–v43 made the engine complete, correct, self-healing, and gap-aware, **v44 makes it conversational, tool-callable, and AI-assisted** — so a user (or an agent like GitHub Copilot) can drive an entire migration, understand its findings, and apply fixes in natural language, without memorising CLI flags.
+
+**Motivation:** The engine already exposes rich structured data — assessment findings, a functionality-parity ledger (v43), a unified confidence-scored healing report (v43), 190 visual mappings, 133+ DAX conversions, and a REST API. What's missing is a **first-class agent surface**: (1) a repo-scoped **GitHub Copilot skill** that teaches any agent how to run the pipeline safely, (2) an **MCP server** exposing migrate/assess/parity/deploy as callable tools, and (3) an **LLM remediation layer** (building on the existing `llm_client.py`) that explains parity gaps and healing decisions and proposes source-level fixes. This closes the loop from *"the engine can do it"* to *"the assistant does it with you."*
+
+**Guiding principles:**
+1. **Skill-first, not chat-bolt-on** — the agent surface is grounded in the same generators and reports; no parallel logic.
+2. **Tools are contracts** — every MCP/skill capability has a typed input/output and a contract test; the assistant never guesses flags.
+3. **AI is assistive, never authoritative** — LLM output is a *suggestion* with confidence; source-level fixes still go through owning agents and tests.
+4. **Secrets never transit the model** — server tokens/PATs are typed by the user, never requested by a tool or echoed.
+5. **Stdlib-first** — MCP transport and skill tooling stay dependency-free for the core path; LLM/remote features are opt-in.
+
+---
+
+### Sprint 215 — GitHub Copilot Migration Skill (@orchestrator, @web-designer)
+
+**Goal:** Ship a repo-scoped, progressive-disclosure skill that lets any Copilot/agent-mode session run migrations correctly and fix issues at the source.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 215.1 | **Core skill** | @orchestrator | `.github/skills/tableau-to-powerbi/SKILL.md` (✅ seeded) | Medium | Frontmatter (name + trigger-rich description), 2-step pipeline, canonical commands, output layout, "fix at the source" ownership map, troubleshooting playbook, safety rules. |
+| 215.2 | **Reference bundle** | @orchestrator | `.github/skills/tableau-to-powerbi/references/*.md` (new) | Medium | On-demand deep-dive files (flag catalogue, parity-report reading guide, deploy runbook) linked from SKILL.md so the core file stays lean. |
+| 215.3 | **Sub-skills for specialties** | @web-designer | `.github/skills/tableau-to-powerbi-deploy/`, `.../-assess/` (new) | Medium | Optional focused skills for deployment and assessment workflows, so large tasks don't load the full engine context. |
+| 215.4 | **Skill lint & registry** | @orchestrator | `scripts/validate_skills.py` (new) | Low | Validate frontmatter, dead links, and that every referenced CLI flag exists in `migrate.py --help`. Wire into CI. |
+| 215.5 | **Tests** | @tester | `tests/test_skill_docs.py` (new) | Medium | 20+ tests: frontmatter schema, referenced-flag existence, no broken relative links, no secrets in examples. |
+
+**Success:** A fresh Copilot agent-mode session can migrate, assess, and troubleshoot a workbook using only the skill — no prior repo knowledge.
+
+---
+
+### Sprint 216 — MCP Server for Migration Tools (@orchestrator, @deployer)
+
+**Goal:** Expose the engine as Model Context Protocol tools so agents/IDEs can call migration capabilities directly.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 216.1 | **MCP stdio server** | @orchestrator | `powerbi_import/mcp_server.py` (new) | High | Stdlib JSON-RPC over stdio (no external deps). Tools: `migrate`, `assess`, `parity_scan`, `qa`, `shared_model`, `diff`, `deploy`. Typed schemas; reuses existing entry points. |
+| 216.2 | **Job model & streaming** | @orchestrator | `powerbi_import/mcp_server.py` | Medium | Long migrations run as jobs with progress events (reuse `progress.py`); tools return job IDs + poll/stream results, mirroring `api_server.py`. |
+| 216.3 | **Report resources** | @assessor | `powerbi_import/mcp_server.py` | Medium | Expose assessment/parity/healing/QA reports as MCP *resources* (JSON) so the agent can read findings without shelling out. |
+| 216.4 | **Deploy tool guardrails** | @deployer | `powerbi_import/mcp_server.py`, `deploy/*` | Medium | `deploy` tool requires explicit workspace + confirmation flag; secrets read from env only, never tool args. Dry-run default. |
+| 216.5 | **Tests** | @tester | `tests/test_mcp_server.py` (new) | Medium | 30+ tests: JSON-RPC contract, each tool schema in/out, job lifecycle, resource reads, deploy-guardrail refusal without confirmation. |
+
+**Success:** An MCP-capable client can run `assess` → `migrate` → `parity_scan` → read reports end-to-end via tool calls.
+
+---
+
+### Sprint 217 — Natural-Language Remediation (@dax, @reviewer)
+
+**Goal:** Turn findings and healing decisions into plain-language explanations and *actionable, source-targeted* fix suggestions, built on the existing LLM client.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 217.1 | **Finding explainer** | @reviewer | `powerbi_import/llm_client.py`, `powerbi_import/remediation.py` (new) | High | Given a parity gap / healing entry / assessment finding, produce a plain-language explanation + recommended action, with the owning file/agent and a confidence score. Deterministic template fallback when no LLM configured. |
+| 217.2 | **DAX fix suggestions** | @dax | `powerbi_import/remediation.py` | Medium | For approximated/failed DAX, propose a concrete rewrite grounded in the 133+ conversion catalogue; label as suggestion + confidence; never auto-apply. |
+| 217.3 | **Remediation report** | @reviewer | `powerbi_import/remediation.py` | Medium | HTML + JSON: per-finding explanation, suggested fix, owning agent, confidence. Reuses `html_template.py`. |
+| 217.4 | **Cost & privacy controls** | @reviewer | `powerbi_import/llm_client.py` | Low | Dry-run prompt preview, token/cost report, redaction of identifiers before any external call; fully offline path when no key present. |
+| 217.5 | **Tests** | @tester | `tests/test_remediation.py` (new) | Medium | 25+ tests: template fallback (no LLM), suggestion structure, confidence bounds, redaction, cost report, no network in offline mode. |
+
+**Success:** Every parity gap and low-confidence heal has a human-readable explanation and a suggested next step; offline mode fully functional.
+
+---
+
+### Sprint 218 — Conversational Assessment & Migration Plan (@assessor, @web-designer)
+
+**Goal:** Let a user ask questions about a workbook/portfolio and get a grounded migration plan — without reading raw JSON.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 218.1 | **Structured Q&A over reports** | @assessor | `powerbi_import/assessment.py`, `powerbi_import/parity_registry.py` | Medium | Query interface answering "what won't migrate cleanly?", "how many visuals are approximated?", "which datasources need a gateway?" from existing structured findings (no hallucination — data-backed). |
+| 218.2 | **Plan generator** | @assessor | `powerbi_import/migration_planner.py` | Medium | Produce an effort-scored, wave-ordered plan from assessment + parity + merge signals; consumable by the skill and MCP `assess` tool. |
+| 218.3 | **Skill wiring** | @web-designer | `.github/skills/tableau-to-powerbi/references/*.md` | Low | Document the Q&A/plan capability in the skill so agents route "assess/plan" intents to it. |
+| 218.4 | **Tests** | @tester | `tests/test_conversational_assess.py` (new) | Medium | 20+ tests: each canned question resolves from data, plan ordering, gateway/parity signal surfacing, empty-workbook edge case. |
+
+**Success:** "Assess this workbook and give me a migration plan" returns a grounded, itemized answer + ordered plan.
+
+---
+
+### Sprint 219 — Agent-Mode Guardrails & Contract Test Harness (@tester, @reviewer)
+
+**Goal:** Make the agent surface safe and regression-guarded so tool/skill changes can't silently break the contract.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 219.1 | **Tool contract snapshots** | @tester | `tests/test_agent_contracts.py` (new) | High | Golden snapshots of every MCP tool schema + skill command surface; drift fails CI. |
+| 219.2 | **Safety guard suite** | @reviewer | `tests/test_agent_safety.py` (new) | Medium | Assert secrets never appear in tool args/logs, deploy refuses without confirmation, LLM path is opt-in, redaction applied. |
+| 219.3 | **End-to-end agent replay** | @tester | `tests/test_agent_e2e.py` (new) | Medium | Simulated agent session (assess → migrate → parity → remediate → deploy dry-run) over a real-world fixture. |
+| 219.4 | **Docs** | @reviewer | `docs/AGENT_SURFACE.md` (new) | Low | Reference for the skill, MCP tools, and remediation layer — capabilities, contracts, safety model. |
+
+**Success:** The agent surface has snapshot-guarded contracts and a passing safety suite; a full simulated session runs green.
+
+---
+
+### Sprint 220 — v44.0.0 Release & Hardening (All Agents)
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 220.1 | **Version bump** | @orchestrator | `pyproject.toml`, `powerbi_import/__init__.py`, `CHANGELOG.md` | Low | → `44.0.0`. |
+| 220.2 | **Release E2E** | @tester | `tests/test_v44_e2e.py` (new) | High | Skill lint + MCP contract + remediation + conversational assess across the real-world portfolio. |
+| 220.3 | **Docs & ROADMAP** | @orchestrator | `docs/AGENT_SURFACE.md`, `docs/ROADMAP.md`, `CHANGELOG.md`, `README.md` | Medium | Mark v44.0.0 ✅ Shipped; document the agent surface; refresh README with skill/MCP quickstart. |
+| 220.4 | **Test baseline** | @tester | — | — | Target: **9,700+** tests. |
+
+### v44.0.0 Success Criteria
+
+| Metric | Target | Owner |
+|--------|--------|-------|
+| GitHub Copilot skill | Repo-scoped skill drives migrate/assess/troubleshoot with zero prior context | @orchestrator |
+| MCP server | 7 tools (migrate/assess/parity/qa/shared_model/diff/deploy), contract-tested | @orchestrator |
+| NL remediation | Every parity gap + low-confidence heal has explanation + suggested fix | @reviewer |
+| Conversational assess | Grounded Q&A + ordered migration plan from structured findings | @assessor |
+| Safety | Secrets never transit model/args; deploy gated; LLM opt-in; offline path works | @reviewer |
+| **Tests** | **9,700+** | @tester |
+
+### v44.0.0 Agent Ownership Matrix
+
+| Agent | Sprints |
+|-------|---------|
+| **@orchestrator** | 215, 216, 220 |
+| **@web-designer** | 215, 218 |
+| **@deployer** | 216 |
+| **@assessor** | 216, 218 |
+| **@dax** | 217 |
+| **@reviewer** | 217, 219 |
+| **@tester** | 215–220 (cross-cutting) |
+
+---
+
+## Sprint 221 — LLM Gateway: Online/Offline Connectivity & On-the-Fly Correction (@deployer, @dax, @reviewer) — 🟡 IN PROGRESS (221.1/221.2/221.3 core DONE `powerbi_import/llm_gateway.py` + `local` provider in `llm_client.py`; 221.4 remediation contract fixed; MCP `llm_status` shipped; 221.6 tests. Pending: healer LLM escalation + CLI `--llm-mode`/`--llm-local-url`/`--llm-autofix`)
+
+**Theme:** Turn the existing one-shot `LLMClient` into a **unified, connectivity-aware LLM gateway** that any part of the engine can call *on the fly* — for DAX/M/visual correction, plain-language explanations, naming/synonyms, and more — whether the machine is **online** (OpenAI / Anthropic / Azure OpenAI) or **offline** (a local OpenAI-compatible model such as Ollama / LM Studio / vLLM), with graceful degradation to the deterministic path when neither is available.
+
+**Motivation:** The engine already ships `powerbi_import/llm_client.py` (`LLMClient` over stdlib `urllib` — OpenAI/Anthropic/Azure, dry-run, cost/token tracking, 429 retry) wired into `--llm-refine` for approximated DAX. Three gaps block "call an LLM on the fly":
+1. **No offline/local path** — every call assumes a cloud provider + API key; air-gapped or key-less environments get nothing.
+2. **No connectivity awareness** — a call to an unreachable endpoint blocks for the full timeout then fails hard instead of falling back.
+3. **A latent contract bug** — `remediation.refine_with_llm()` calls `client.complete(prompt)`, but `LLMClient` only exposes `call(system, user)`; the v44 remediation LLM path can never actually invoke the real client.
+
+v221 closes all three with one small, dependency-free gateway layer, and reuses it everywhere corrections happen.
+
+**Guiding principles:**
+1. **Offline-first, opt-in online** — default `auto`: try local/offline, use cloud only when configured; the full deterministic pipeline still works with the LLM entirely disabled.
+2. **Connectivity is probed, not assumed** — a cheap reachability check picks the route and fails over fast.
+3. **Assistive, never authoritative** — LLM output is a confidence-scored *suggestion*; nothing is auto-applied unless the user opts in (`--llm-autofix`), and every applied fix is recorded in the recovery ledger.
+4. **Secrets never transit args/model** — keys come from the environment only; identifiers are redacted before any network call.
+5. **Stdlib-first** — no new dependencies for the core path (local endpoints are plain HTTP).
+
+---
+
+### Deliverables
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 221.1 | **LLM Gateway core** | @deployer | `powerbi_import/llm_gateway.py` (new) | High | `LLMGateway` wrapping `LLMClient`. Modes `online` / `offline` / `auto`. Providers: `openai`, `anthropic`, `azure_openai`, **`local`** (OpenAI-compatible, default `http://localhost:11434/v1`, no key), **`none`** (disabled → deterministic no-op). Unified `complete(prompt, system=None) -> LLMResult` **and** `call(system, user)` (fixes the `remediation` contract bug). `LLMResult{text, provider, mode, tokens, cost, confidence, source, cached, error}`. |
+| 221.2 | **Connectivity probe & failover** | @deployer | `powerbi_import/llm_gateway.py` | Medium | `is_online(timeout=1.5)` — cheap TCP/HTTP reachability check on the configured endpoint host:port, result cached for the run. `auto` mode: probe → local → cloud → deterministic fallback. Never blocks longer than the probe timeout before failing over. |
+| 221.3 | **Config & guardrails** | @deployer | `powerbi_import/llm_gateway.py`, `config/migration_config.py` | Medium | Env-driven: `LLM_MODE`, `LLM_PROVIDER`, `LLM_ENDPOINT`, `LLM_LOCAL_URL`, `LLM_API_KEY`, `LLM_MAX_CALLS`, `LLM_MAX_COST_USD`. Budget cap (calls + $), per-run cost report, **identifier redaction** before send (reuse `security_validator.redact_credentials`), response cache (content-hash → result, optional on-disk), dry-run prompt preview. |
+| 221.4 | **On-the-fly correction wiring** | @dax, @reviewer | `powerbi_import/remediation.py`, `powerbi_import/dax_healing.py`, `powerbi_import/m_healing.py`, `powerbi_import/recovery_report.py` | High | Fix `refine_with_llm` to use `gateway.complete`. Add **LLM escalation**: when a deterministic healer leaves a still-invalid / low-confidence result, optionally ask the gateway for a fix (labeled `source="llm"`, confidence from validation re-check). Record every LLM-suggested/applied repair in the recovery ledger (`repair_type="llm_correction"`). Never auto-apply unless `--llm-autofix`. |
+| 221.5 | **CLI & MCP surface** | @orchestrator, @deployer | `migrate.py`, `powerbi_import/mcp_server.py` | Medium | New CLI: `--llm-mode {auto,online,offline}`, `--llm-local-url URL`, `--llm-autofix` (default off), `--llm-max-cost`; keep existing `--llm-*`. New MCP tool `llm_status` (report mode, provider, reachability, budget — no secrets). Optional `llm_refine` tool gated behind explicit confirm, env-only creds. |
+| 221.6 | **Tests** | @tester | `tests/test_llm_gateway.py` (new) | Medium | 30+ tests (all mocked, no network): mode routing, `is_online` probe + failover, local-provider body/URL, `complete`/`call` parity, redaction-before-send, budget cap, cache hit, dry-run, offline no-op fallback, remediation wiring, healer escalation labeling, `llm_status` MCP contract. |
+
+**Success:** A single `LLMGateway` serves every LLM need; migrations run identically with the LLM **off**, **local/offline**, or **online**; connectivity loss fails over within the probe timeout; the `remediation` LLM path works; and every LLM correction is confidence-scored, redaction-safe, budget-capped, and auditable in the recovery report.
+
+### Architecture
+
+```
+callers (remediation · dax_healing · m_healing · converter · assessment)
+                     │  gateway.complete(prompt) / gateway.call(system,user)
+                     ▼
+             ┌───────────────────┐
+             │    LLMGateway     │  mode: auto | online | offline
+             │  redact · cache · │
+             │  budget · probe   │
+             └───────┬───────────┘
+        is_online? ──┤
+     ┌───────────────┼────────────────┬─────────────────┐
+     ▼               ▼                ▼                 ▼
+ local (Ollama/   openai /         azure_openai      none (offline)
+ LM Studio/vLLM)  anthropic                          → deterministic
+ OpenAI-compat    (LLMClient)      (LLMClient)          template / no-op
+```
+
+### Safety model
+- **Default is `auto` and opt-in** — with no config, the gateway is `none` (disabled); the deterministic healers/remediation are unaffected.
+- **Redaction** — table/column/measure identifiers are scrubbed before any prompt leaves the machine; a dry-run shows the exact redacted prompt.
+- **Budget** — hard caps on call count and USD; exceeding either returns a deterministic no-op, never a silent overspend.
+- **No auto-apply** — LLM fixes are suggestions in the recovery report unless `--llm-autofix`, and even then only high-confidence (re-validated) corrections apply.
+- **Secrets** — keys from env only; the `llm_status` / `llm_refine` MCP tools refuse secret-looking arguments (same guard as `deploy`).
+
+### Agent ownership
+
+| Agent | Items |
+|-------|-------|
+| **@deployer** | 221.1, 221.2, 221.3, 221.5 (MCP) |
+| **@dax** | 221.4 (DAX escalation) |
+| **@reviewer** | 221.4 (remediation), safety review |
+| **@orchestrator** | 221.5 (CLI) |
+| **@tester** | 221.6 (cross-cutting) |
+
+---
+
 ## Sprint Sequencing (v38–v42)
 
 
@@ -2795,6 +3028,13 @@ v43.0.0 — Self-Healing Maturity & Functionality Parity
   Sprint 211 (Visual Healing) ──→ Sprint 212 (Semantic Healing)
            ↓                            ↓
   Sprint 213 (Healing Observability) ──→ Sprint 214 (Release)
+
+v44.0.0 — Agentic & Copilot-Native Migration
+  Sprint 215 (Copilot Skill) ──→ Sprint 216 (MCP Server)
+           ↓                          ↓
+  Sprint 217 (NL Remediation) ──→ Sprint 218 (Conversational Assess)
+                                       ↓
+  Sprint 219 (Guardrails/Contracts) ──→ Sprint 220 (Release)
 ```
 
 ---
@@ -2835,3 +3075,4 @@ v43.0.0 — Self-Healing Maturity & Functionality Parity
 | **v41.0.0** | **9,800+** | 75+ | 145+ | 125+ | 85 | 14 |
 | **v42.0.0** | **10,000+** | 75+ | 145+ | 125+ | 85 | 14 |
 | **v43.0.0** | **9,500+** (post-v40 baseline) | 75+ | 145+ | **133+** | **120+** | 14 |
+| **v44.0.0** | **9,700+** | 75+ | 145+ | 133+ | 120+ | 15 |

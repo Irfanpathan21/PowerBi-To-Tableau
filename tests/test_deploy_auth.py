@@ -115,6 +115,13 @@ class TestAuthenticatorConstants(unittest.TestCase):
         self.assertEqual(len(FabricAuthenticator.SCOPE), 1)
         self.assertIn('powerbi', FabricAuthenticator.SCOPE[0])
 
+    def test_storage_scope(self):
+        from powerbi_import.deploy.auth import FabricAuthenticator
+        self.assertEqual(
+            FabricAuthenticator.STORAGE_SCOPE,
+            ['https://storage.azure.com/.default'],
+        )
+
 
 class TestMissingAzureIdentity(unittest.TestCase):
     """Test behavior when azure-identity is not installed."""

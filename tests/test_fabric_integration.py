@@ -35,10 +35,30 @@ from powerbi_import.comparison_report import generate_comparison_report
 
 class FakeAuthenticator:
     """Minimal authenticator stub returning a static token."""
+    def __init__(self):
+        self.header_calls = []
+
     def get_token(self, *scopes):
         token = MagicMock()
         token.token = 'FAKE_TOKEN_12345'
         return token
+
+    def get_headers(self, scopes=None, content_type='application/json'):
+        self.header_calls.append((scopes, content_type))
+        return {
+            'Authorization': 'Bearer FAKE_TOKEN_12345',
+            'Content-Type': content_type,
+            'Accept': 'application/json',
+        }
+
+
+def _mock_response(status_code, payload=None, headers=None):
+    response = MagicMock()
+    response.status_code = status_code
+    response.headers = headers or {}
+    response.text = json.dumps(payload) if payload is not None else ''
+    response.json.return_value = payload
+    return response
 
 
 # ────────────────────────────────────────────────────────
@@ -51,9 +71,51 @@ class TestFabricClient(unittest.TestCase):
     def _make_client(self):
         return FabricClient(authenticator=FakeAuthenticator())
 
+    def _make_requests_client(self, responses):
+        client = self._make_client()
+        client._use_requests = True
+        client._session = MagicMock()
+        client._session.request.side_effect = responses
+        return client
+
     def test_client_init(self):
         client = self._make_client()
         self.assertIsNotNone(client)
+
+    def test_onelake_upload_uses_storage_scope_and_chunk_positions(self):
+        from powerbi_import.deploy.auth import FabricAuthenticator
+
+        authenticator = FakeAuthenticator()
+        client = FabricClient(authenticator=authenticator)
+        calls = []
+        client._send_binary_request = (
+            lambda method, url, data, headers:
+            calls.append((method, url, data, dict(headers))))
+        content = b'a' * (4 * 1024 * 1024 + 3)
+
+        result = client.upload_onelake_file(
+            'workspace id', 'lakehouse id', 'Files/orders.csv', content)
+
+        self.assertEqual(
+            authenticator.header_calls,
+            [(FabricAuthenticator.STORAGE_SCOPE, 'application/octet-stream')],
+        )
+        self.assertEqual([call[0] for call in calls],
+                         ['PUT', 'PATCH', 'PATCH', 'PATCH'])
+        self.assertTrue(calls[0][1].endswith(
+            '/workspace%20id/lakehouse%20id.Lakehouse/'
+            'Files/orders.csv?resource=file'))
+        self.assertTrue(calls[1][1].endswith('action=append&position=0'))
+        self.assertTrue(calls[2][1].endswith(
+            'action=append&position=4194304'))
+        self.assertTrue(calls[3][1].endswith(
+            'action=flush&position=4194307'))
+        self.assertEqual([len(call[2]) for call in calls],
+                         [0, 4194304, 3, 0])
+        self.assertEqual(result, {
+            'path': 'Files/orders.csv',
+            'size': 4194307,
+        })
 
     def test_list_workspaces_mock(self):
         client = self._make_client()
@@ -88,6 +150,102 @@ class TestFabricClient(unittest.TestCase):
         with patch.object(client, '_request', return_value=fake_response):
             result = client.get_workspace('ws-1')
             self.assertIsNotNone(result)
+
+    def test_get_absolute_uses_exact_url_and_authentication(self):
+        url = ('https://api.powerbi.com/v2.0/myorg/me/'
+               'gatewayClusterDatasources')
+        client = self._make_requests_client([
+            _mock_response(200, {'value': [{'id': 'connection-1'}]}),
+        ])
+
+        result = client.get_absolute(url)
+
+        self.assertEqual(result, {'value': [{'id': 'connection-1'}]})
+        call = client._session.request.call_args
+        self.assertEqual(call.kwargs['url'], url)
+        self.assertEqual(call.kwargs['method'], 'GET')
+        self.assertEqual(
+            call.kwargs['headers']['Authorization'],
+            'Bearer FAKE_TOKEN_12345',
+        )
+
+    def test_post_202_polls_operation_and_returns_result(self):
+        operation_url = 'https://api.fabric.microsoft.com/v1/operations/op-123'
+        responses = [
+            _mock_response(202, headers={
+                'Location': operation_url,
+                'Retry-After': '0',
+            }),
+            _mock_response(200, {'status': 'Running'}, {'Retry-After': '0'}),
+            _mock_response(200, {'status': 'Succeeded'}),
+            _mock_response(200, {'id': 'item-456', 'displayName': 'Sales'}),
+        ]
+        client = self._make_requests_client(responses)
+
+        result = client.post('/workspaces/ws-1/items', {'displayName': 'Sales'})
+
+        self.assertEqual(result['id'], 'item-456')
+        calls = client._session.request.call_args_list
+        self.assertEqual([call.kwargs['method'] for call in calls],
+                         ['POST', 'GET', 'GET', 'GET'])
+        self.assertEqual(calls[1].kwargs['url'], operation_url)
+        self.assertEqual(calls[2].kwargs['url'], operation_url)
+        self.assertEqual(calls[3].kwargs['url'], f'{operation_url}/result')
+
+    def test_post_202_failed_operation_raises_clear_exception(self):
+        operation_url = 'https://api.fabric.microsoft.com/v1/operations/op-failed'
+        responses = [
+            _mock_response(202, headers={
+                'Location': operation_url,
+                'Retry-After': '0',
+            }),
+            _mock_response(200, {
+                'status': 'Failed',
+                'error': {'message': 'Capacity unavailable'},
+            }),
+        ]
+        client = self._make_requests_client(responses)
+
+        with self.assertRaisesRegex(
+                Exception, '(?i)(operation.*failed|failed.*operation)') as raised:
+            client.post('/workspaces/ws-1/items', {'displayName': 'Sales'})
+
+        self.assertIn('Capacity unavailable', str(raised.exception))
+
+    def test_post_202_completed_job_returns_terminal_payload_without_result(self):
+        job_url = ('https://api.fabric.microsoft.com/v1/workspaces/ws-1/'
+                   'items/pipeline-1/jobs/instances/job-1')
+        completed = {'id': 'job-1', 'status': 'Completed'}
+        client = self._make_requests_client([
+            _mock_response(202, headers={
+                'Location': job_url,
+                'Retry-After': '0',
+            }),
+            _mock_response(200, completed),
+        ])
+
+        result = client.post(
+            '/workspaces/ws-1/items/pipeline-1/jobs/instances?jobType=Pipeline',
+            {},
+        )
+
+        self.assertEqual(result, completed)
+        self.assertEqual(client._session.request.call_count, 2)
+        self.assertEqual(
+            client._session.request.call_args_list[1].kwargs['url'], job_url)
+
+    def test_post_200_and_201_return_immediate_json_unchanged(self):
+        for status_code in (200, 201):
+            with self.subTest(status_code=status_code):
+                expected = {'id': f'item-{status_code}', 'status': 'Ready'}
+                client = self._make_requests_client([
+                    _mock_response(status_code, expected),
+                ])
+
+                result = client.post('/workspaces/ws-1/items', {'name': 'Sales'})
+
+                self.assertEqual(result, expected)
+                self.assertEqual(client._session.request.call_count, 1)
 
 
 # ────────────────────────────────────────────────────────

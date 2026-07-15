@@ -20,19 +20,23 @@ Output structure:
 
 import os
 import json
-import sys
 
 # Import the existing tmdl_generator from the same package
 from . import tmdl_generator
+from .fabric_item import logical_id, write_platform
 
 
 class FabricSemanticModelGenerator:
     """Generate a standalone Fabric SemanticModel artifact with DirectLake mode."""
 
-    def __init__(self, project_dir, model_name, lakehouse_name=None):
+    def __init__(self, project_dir, model_name, lakehouse_name=None,
+                 item_id=None, lakehouse_id=None, workspace_id=None):
         self.project_dir = project_dir
         self.model_name = model_name
         self.lakehouse_name = lakehouse_name or f'{model_name}_Lakehouse'
+        self.item_id = item_id or logical_id(model_name, 'SemanticModel')
+        self.lakehouse_id = lakehouse_id or logical_id(model_name, 'Lakehouse')
+        self.workspace_id = workspace_id or logical_id(model_name, 'Workspace')
         self.sm_dir = os.path.join(project_dir, f'{model_name}.SemanticModel')
         os.makedirs(self.sm_dir, exist_ok=True)
 
@@ -66,6 +70,10 @@ class FabricSemanticModelGenerator:
             'sort_orders': extracted.get('sort_orders', []),
             'aliases': extracted.get('aliases', {}),
             'data_blending': extracted.get('data_blending', []),
+            '_direct_lake': {
+                'workspace_id': self.workspace_id,
+                'lakehouse_id': self.lakehouse_id,
+            },
         }
 
         # Output TMDL inside SemanticModel/definition
@@ -73,9 +81,6 @@ class FabricSemanticModelGenerator:
         # so pass sm_dir (not a pre-created definition_dir) to avoid double-nesting.
         os.makedirs(self.sm_dir, exist_ok=True)
 
-        # Use the existing tmdl_generator — import mode for now
-        # (Direct Lake is metadata-only — TMDL partitions stay as M/import
-        #  and Fabric resolves them to entity partitions at deploy time)
         stats = tmdl_generator.generate_tmdl(
             datasources=datasources,
             report_name=self.model_name,
@@ -84,12 +89,13 @@ class FabricSemanticModelGenerator:
             calendar_start=calendar_start,
             calendar_end=calendar_end,
             culture=culture,
-            model_mode='import',
+            model_mode='directLake',
             languages=languages,
         )
 
         # Create .platform manifest
         self._write_platform_file()
+        self._write_definition_file()
 
         # Create item metadata with DirectLake indicator
         self._write_item_metadata(stats)
@@ -98,20 +104,26 @@ class FabricSemanticModelGenerator:
 
     def _write_platform_file(self):
         """Write the .platform manifest for the SemanticModel item."""
-        platform = {
-            "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
-            "metadata": {
-                "type": "SemanticModel",
-                "displayName": self.model_name,
-            },
-            "config": {
-                "version": "2.0",
-                "logicalId": f"semantic-model-{self.model_name.lower().replace(' ', '-')}",
-            },
+        write_platform(
+            self.sm_dir,
+            'SemanticModel',
+            self.model_name,
+            self.item_id,
+        )
+
+    def _write_definition_file(self):
+        """Write the Fabric SemanticModel definition properties part."""
+        definition = {
+            "$schema": (
+                "https://developer.microsoft.com/json-schemas/fabric/item/"
+                "semanticModel/definitionProperties/1.0.0/schema.json"
+            ),
+            "version": "4.2",
+            "settings": {"qnaEnabled": True},
         }
-        path = os.path.join(self.sm_dir, '.platform')
+        path = os.path.join(self.sm_dir, 'definition.pbism')
         with open(path, 'w', encoding='utf-8') as f:
-            json.dump(platform, f, indent=2)
+            json.dump(definition, f, indent=2)
 
     def _write_item_metadata(self, stats):
         """Write a metadata JSON for the semantic model."""

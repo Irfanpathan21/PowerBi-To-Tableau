@@ -14,6 +14,7 @@ from datetime import datetime
 
 from .calc_column_utils import classify_calculations, sanitize_calc_col_name
 from .fabric_constants import map_to_spark_type as _map_to_spark_type
+from .fabric_item import logical_id, write_platform
 from .fabric_naming import sanitize_table_name as _sanitize_table_name
 from .fabric_naming import sanitize_column_name as _sanitize_column_name
 
@@ -21,9 +22,10 @@ from .fabric_naming import sanitize_column_name as _sanitize_column_name
 class LakehouseGenerator:
     """Generates Lakehouse definitions from Tableau datasources."""
 
-    def __init__(self, project_dir, project_name):
+    def __init__(self, project_dir, project_name, item_id=None):
         self.project_dir = project_dir
         self.project_name = project_name
+        self.item_id = item_id or logical_id(project_name, 'Lakehouse')
         self.lakehouse_dir = os.path.join(project_dir, f'{project_name}.Lakehouse')
         os.makedirs(self.lakehouse_dir, exist_ok=True)
 
@@ -135,8 +137,19 @@ class LakehouseGenerator:
         with open(def_path, 'w', encoding='utf-8') as f:
             json.dump(lakehouse_def, f, indent=2, ensure_ascii=False)
 
+        metadata_path = os.path.join(
+            self.lakehouse_dir, 'lakehouse.metadata.json')
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump({'defaultSchema': 'dbo'}, f, indent=2)
+
         self._generate_ddl(tables)
         self._generate_table_metadata(tables)
+        write_platform(
+            self.lakehouse_dir,
+            'Lakehouse',
+            f'{self.project_name}_Lakehouse',
+            self.item_id,
+        )
 
         total_columns = sum(len(t.get('columns', [])) for t in tables)
         return {'tables': len(tables), 'columns': total_columns,

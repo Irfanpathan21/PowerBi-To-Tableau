@@ -1414,6 +1414,50 @@ def _check_multi_datasource(extracted: Dict) -> CategoryResult:
     return cat
 
 
+def _check_functionality_parity(extracted: Dict) -> CategoryResult:
+    """Category: Functionality Parity (v43/v44, Sprint 209.2).
+
+    Uses the parity registry to resolve the Power BI coverage status of every
+    Tableau feature actually in use, and surfaces a parity score plus a finding
+    for each approximated/unsupported feature. Findings are INFO severity so this
+    category never changes the overall readiness score — the parity scorecard and
+    ``--parity-strict`` carry the enforcement weight.
+    """
+    cat = CategoryResult(name="Functionality Parity")
+    try:
+        from parity_registry import scan_workbook  # type: ignore
+    except ImportError:
+        try:
+            from powerbi_import.parity_registry import scan_workbook
+        except ImportError:
+            cat.checks.append(CheckItem(
+                cat.name, "Parity registry", INFO,
+                "Parity registry unavailable; skipping functionality-parity scan.",
+            ))
+            return cat
+
+    scan = scan_workbook(extracted)
+    cat.checks.append(CheckItem(
+        cat.name, "Parity score", PASS,
+        f"Functionality parity {scan.parity_score}% ({scan.grade}); "
+        f"registry v{scan.registry_version}.",
+    ))
+    for u in scan.gaps:
+        cat.checks.append(CheckItem(
+            cat.name,
+            f"{u.label} ({u.status})",
+            INFO,
+            f"{u.count} in use → {u.target}.",
+            u.remediation,
+        ))
+    if not scan.gaps:
+        cat.checks.append(CheckItem(
+            cat.name, "No parity gaps", PASS,
+            "Every in-use feature maps exactly or is auto-healed.",
+        ))
+    return cat
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Main assessment orchestrator
 # ═══════════════════════════════════════════════════════════════════
@@ -1453,6 +1497,7 @@ def run_assessment(
         _check_prep_complexity(extracted),
         _check_licensing(extracted),
         _check_multi_datasource(extracted),
+        _check_functionality_parity(extracted),
     ]
 
     # Build summary

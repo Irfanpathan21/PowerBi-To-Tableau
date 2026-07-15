@@ -13,16 +13,21 @@ Current release baseline: **v40.0.0** (see `../CHANGELOG.md` and `ROADMAP.md`).
 
 ## Quick Reference
 
-### CLI Options
+### CLI Commands
 
 ```bash
-python migrate.py file.twbx                          # Basic migration
-python migrate.py file.twbx --prep flow.tfl           # With Prep flow
-python migrate.py file.twbx --output-dir /tmp/output  # Custom output
-python migrate.py file.twbx --verbose --log-file m.log # Verbose + log file
-python migrate.py --batch dir/ --output-dir /tmp/out   # Batch migration
-python migrate.py --skip-conversion                    # Re-generate only
+python migrate.py migrate file.twbx
+python migrate.py assess file.twbx
+python migrate.py batch dir/ --output-dir /tmp/out
+python migrate.py server https://tableau.example "Sales Dashboard"
+python migrate.py merge wb1.twbx wb2.twbx
+python migrate.py fabric file.twbx
+python migrate.py deploy file.twbx WORKSPACE_ID
+python migrate.py qa file.twbx
 ```
+
+Use `python migrate.py --help` for the concise interface. Existing flag-based
+automation remains compatible through `python migrate.py --advanced-help`.
 
 ### Project Structure
 

@@ -83,6 +83,61 @@ class RecoveryReport:
 
         self.repairs.append(entry)
 
+    def record_heal(self, heal_report, category=None, item_name=''):
+        """Record every repair from a ``dax_healing`` / ``m_healing`` HealReport.
+
+        Bridges the confidence-scored self-healers (Sprint 210.3/210.4) into the
+        unified recovery ledger. Consumes the HealReport via duck typing so this
+        module stays import-cycle-free.
+
+        Confidence maps to severity + follow-up:
+            high   → info,    no follow-up
+            medium → warning, review recommended
+            low    → warning, manual review required
+
+        Args:
+            heal_report: a ``HealReport`` (has ``.actions`` and ``.changed``).
+            category: recovery category; defaults to M_QUERY when any action's
+                category starts with 'm_', else TMDL.
+            item_name: name of the healed measure / query (optional).
+
+        Returns:
+            int: number of repair entries recorded.
+        """
+        actions = list(getattr(heal_report, 'actions', []) or [])
+        if not actions:
+            return 0
+        if category is None:
+            is_m = any(str(getattr(a, 'category', '')).startswith('m_') for a in actions)
+            category = self.M_QUERY if is_m else self.TMDL
+        recorded = 0
+        for action in actions:
+            confidence = str(getattr(action, 'confidence', 'medium'))
+            severity = self.INFO if confidence == 'high' else self.WARNING
+            if confidence == 'high':
+                follow_up = ''
+            elif confidence == 'low':
+                follow_up = ('Manually review this auto-healed expression '
+                             '(low confidence).')
+            else:
+                follow_up = ('Review the auto-healed expression '
+                             '(medium confidence).')
+            before = str(getattr(action, 'before', ''))
+            after = str(getattr(action, 'after', ''))
+            self.record(
+                category,
+                str(getattr(action, 'healer', 'heal')),
+                description=str(getattr(action, 'note', '')) or 'auto-healed expression',
+                action=f'{before}  ->  {after}',
+                severity=severity,
+                follow_up=follow_up,
+                item_name=item_name,
+                original_value=before,
+                repaired_value=after,
+            )
+            recorded += 1
+        return recorded
+
     @property
     def has_repairs(self):
         return len(self.repairs) > 0

@@ -268,10 +268,9 @@ def _run_fabric_generation(report_name=None, output_dir=None,
 
     Returns True on success, False on failure.
     """
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'powerbi_import'))
     try:
-        from fabric_project_generator import FabricProjectGenerator
-        from import_to_powerbi import PowerBIImporter
+        from powerbi_import.fabric_project_generator import FabricProjectGenerator
+        from powerbi_import.import_to_powerbi import PowerBIImporter
 
         # Load extracted JSON files
         loader = PowerBIImporter()
@@ -1211,6 +1210,11 @@ def _run_batch_config(args):
         if file_results.get('generation'):
             report_summary = run_migration_report(report_name=basename, output_dir=out_dir)
 
+        if file_results.get('generation') and getattr(args, 'verify_open', True):
+            project_root = out_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
+            project_dir = os.path.join(project_root, basename)
+            file_results['openability'] = _run_openability_gate(project_dir)
+
         all_ok = all(v for v in file_results.values() if v is not None)
         dashboard_dir = out_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
         results[basename] = {
@@ -1376,7 +1380,8 @@ def _migrate_single_prep_flow(tableau_file, basename, workbook_output_dir, displ
 
 
 def _migrate_single_workbook(tableau_file, basename, workbook_output_dir, display_name,
-                             skip_extraction, wb_prep, wb_cal_start, wb_cal_end, wb_culture):
+                             skip_extraction, wb_prep, wb_cal_start, wb_cal_end, wb_culture,
+                             verify_open=True):
     """Migrate a single workbook — used by both sequential and parallel batch modes.
 
     For .tfl/.tflx files, delegates to _migrate_single_prep_flow() which produces
@@ -1437,6 +1442,10 @@ def _migrate_single_workbook(tableau_file, basename, workbook_output_dir, displa
     if file_results.get('generation') and not tableau_file.lower().endswith('.twbx'):
         project_dir = os.path.join(workbook_output_dir, basename)
         _fix_twb_data_folder(project_dir, basename)
+
+    if file_results.get('generation') and verify_open:
+        project_dir = os.path.join(workbook_output_dir, basename)
+        file_results['openability'] = _run_openability_gate(project_dir)
 
     all_ok = all(v for v in file_results.values() if v is not None)
     return {
@@ -1668,7 +1677,7 @@ def _run_full_lineage(batch_results, migrated_root):
 def run_batch_migration(batch_dir, output_dir=None, prep_file=None, skip_extraction=False,
                         calendar_start=None, calendar_end=None, culture=None,
                         parallel=None, resume=False, jsonl_log=None, manifest=None,
-                        full_lineage=False):
+                        full_lineage=False, verify_open=True):
     """Batch migrate all .twb/.twbx files in a directory (recursive).
 
     Searches the directory tree recursively for Tableau workbooks and
@@ -1850,6 +1859,7 @@ def run_batch_migration(batch_dir, output_dir=None, prep_file=None, skip_extract
             wb_cal_start=task['wb_cal_start'],
             wb_cal_end=task['wb_cal_end'],
             wb_culture=task['wb_culture'],
+            verify_open=verify_open,
         )
 
         wb_duration = (datetime.now() - wb_start_time).total_seconds()
@@ -2054,6 +2064,18 @@ def _add_migration_args(parser):
     )
 
     parser.add_argument(
+        '--parity',
+        action='store_true',
+        help='Emit a Tableau→Power BI functionality-parity scorecard after extraction (no generation)'
+    )
+
+    parser.add_argument(
+        '--parity-strict',
+        action='store_true',
+        help='Like --parity, but exit non-zero if any in-use feature is unsupported'
+    )
+
+    parser.add_argument(
         '--pdf',
         action='store_true',
         default=False,
@@ -2210,6 +2232,34 @@ def _add_report_args(parser):
     )
 
     parser.add_argument(
+        '--verify-open',
+        action='store_true',
+        default=True,
+        help='Run the Power BI Desktop openability preflight on the generated .pbip '
+             '(enabled by default): '
+             'validate every Power Query (M) partition, DAX measure, JSON file, TMDL '
+             'presence, project structure and PBIR schema. Prints a GREEN/blocking '
+             'report and exits non-zero if the project would not open.'
+    )
+
+    parser.add_argument(
+        '--no-verify-open',
+        action='store_false',
+        dest='verify_open',
+        help='Disable the default static Power BI openability preflight.'
+    )
+
+    parser.add_argument(
+        '--desktop-probe',
+        action='store_true',
+        default=False,
+        help='Best-effort REAL open self-check: after generation, launch Power BI '
+             'Desktop against the generated .pbip and watch for an early crash / '
+             'FrownDump / error traces. Windows + Desktop install required; the '
+             'static --verify-open preflight remains the authoritative check.'
+    )
+
+    parser.add_argument(
         '--compare',
         action='store_true',
         default=True,
@@ -2350,6 +2400,48 @@ def _add_ai_args(parser):
     )
 
     parser.add_argument(
+        '--autoheal',
+        action='store_true',
+        default=False,
+        help='After generation, run the closed-loop autohealer so the .pbip opens '
+             'cleanly in Power BI Desktop: collect load errors (DAX/M/visual) → '
+             'deterministic heal → optional LLM correction → re-validate → apply only '
+             'if it validates. Deterministic-only unless --llm-autofix is set.'
+    )
+
+    parser.add_argument(
+        '--autoheal-log',
+        metavar='PATH',
+        default=None,
+        help='Path to a Power BI Desktop error export / FrownDump to target real load '
+             'errors during --autoheal (otherwise static validators are used).'
+    )
+
+    parser.add_argument(
+        '--llm-autofix',
+        action='store_true',
+        default=False,
+        help='Allow --autoheal to use the LLM gateway for corrections that fail '
+             'deterministic healing (opt-in; offline-first, budget-capped, redacted).'
+    )
+
+    parser.add_argument(
+        '--llm-mode',
+        choices=['auto', 'online', 'offline'],
+        default=None,
+        help='LLM gateway routing mode for --llm-autofix (default: from LLM_MODE env, '
+             'else auto). offline=local only, online=cloud only, auto=local→cloud→none.'
+    )
+
+    parser.add_argument(
+        '--llm-local-url',
+        metavar='URL',
+        default=None,
+        help='Local OpenAI-compatible LLM endpoint (Ollama/LM Studio/vLLM) for offline '
+             'autofix (default: from LLM_LOCAL_URL env, else http://localhost:11434/v1).'
+    )
+
+    parser.add_argument(
         '--web-ui',
         action='store_true',
         default=False,
@@ -2400,9 +2492,12 @@ def _add_deploy_args(parser):
         metavar='WORKSPACE_ID',
         default=None,
         help=(
-            'Deploy the generated .pbip project to a Power BI Service workspace. '
-            'Requires PBI_TENANT_ID, PBI_CLIENT_ID, PBI_CLIENT_SECRET env vars '
-            '(or PBI_ACCESS_TOKEN). Pass the target workspace/group ID.'
+            'Deploy the generated project to a Power BI or Fabric workspace. '
+            'Fabric output deploys all generated workload items in dependency order. '
+            'PBIP deployment uses PBI_TENANT_ID, PBI_CLIENT_ID, and '
+            'PBI_CLIENT_SECRET (or PBI_ACCESS_TOKEN); Fabric-native deployment '
+            'uses FABRIC_TENANT_ID, FABRIC_CLIENT_ID, and FABRIC_CLIENT_SECRET. '
+            'Pass the target workspace/group ID.'
         )
     )
 
@@ -2410,7 +2505,10 @@ def _add_deploy_args(parser):
         '--deploy-refresh',
         action='store_true',
         default=False,
-        help='Trigger a dataset refresh after deploying to Power BI Service (requires --deploy)'
+        help=(
+            'After --deploy, refresh the Power BI dataset or run the deployed '
+            'Fabric Data Pipeline and wait for completion.'
+        )
     )
 
     parser.add_argument(
@@ -2951,6 +3049,122 @@ def _build_argument_parser():
     return parser
 
 
+_SIMPLE_COMMANDS = {
+    'migrate', 'assess', 'batch', 'server',
+    'merge', 'fabric', 'deploy', 'qa',
+}
+
+_SIMPLE_HELP = """\
+Tableau to Power BI - 8 simple commands
+
+Usage:
+  python migrate.py migrate WORKBOOK [options]
+  python migrate.py assess WORKBOOK [options]
+  python migrate.py batch FOLDER [options]
+  python migrate.py server URL WORKBOOK [options]
+  python migrate.py merge WORKBOOK... [options]
+  python migrate.py fabric WORKBOOK [options]
+  python migrate.py deploy WORKBOOK WORKSPACE_ID [options]
+  python migrate.py qa WORKBOOK [options]
+
+Commands:
+  migrate   Convert one Tableau workbook to a validated PBIP project
+  assess    Assess migration readiness without generating a project
+  batch     Migrate every workbook and Prep flow in a folder
+  server    Download and migrate one Tableau Server/Cloud workbook
+  merge     Build one shared semantic model from multiple workbooks
+  fabric    Generate Lakehouse, Dataflow, Notebook, model, report, pipeline
+  deploy    Generate Fabric artifacts, deploy them, and run the pipeline
+  qa        Migrate a workbook and generate the QA report card
+
+Common options:
+  --output-dir PATH   Choose the output folder
+  --verbose           Show detailed progress
+  --config FILE       Load advanced settings from JSON
+
+Compatibility:
+  Existing flag-based commands still work unchanged.
+  Use "python migrate.py --advanced-help" for every legacy option.
+  Power BI Desktop opens only when --desktop-probe is explicitly provided.
+"""
+
+
+def _expand_simple_command(argv):
+    """Translate one simple command into the backward-compatible CLI flags."""
+    args = list(argv)
+    if not args or args[0] not in _SIMPLE_COMMANDS:
+        return args
+
+    command = args[0]
+    values = args[1:]
+    if command in {'migrate', 'assess', 'fabric', 'qa'}:
+        if not values or values[0].startswith('-'):
+            raise ValueError(f"'{command}' requires a Tableau workbook path")
+        source, options = values[0], values[1:]
+        fixed = {
+            'migrate': [],
+            'assess': ['--assess'],
+            'fabric': ['--output-format', 'fabric'],
+            'qa': ['--qa'],
+        }[command]
+        return [source, *fixed, *options]
+
+    if command == 'batch':
+        if not values or values[0].startswith('-'):
+            raise ValueError("'batch' requires a folder path")
+        return ['--batch', values[0], *values[1:]]
+
+    if command == 'server':
+        if len(values) < 2 or any(value.startswith('-') for value in values[:2]):
+            raise ValueError("'server' requires URL and workbook name")
+        return [
+            '--server', values[0], '--workbook', values[1], *values[2:],
+        ]
+
+    if command == 'merge':
+        workbooks = []
+        option_index = len(values)
+        for index, value in enumerate(values):
+            if value.startswith('-'):
+                option_index = index
+                break
+            workbooks.append(value)
+        if len(workbooks) < 2:
+            raise ValueError("'merge' requires at least two workbook paths")
+        return [
+            '--shared-model', *workbooks, *values[option_index:],
+        ]
+
+    if command == 'deploy':
+        if len(values) < 2 or any(value.startswith('-') for value in values[:2]):
+            raise ValueError("'deploy' requires workbook path and workspace ID")
+        return [
+            values[0], '--output-format', 'fabric',
+            '--deploy', values[1], '--deploy-refresh', *values[2:],
+        ]
+
+    return args
+
+
+def _parse_cli_args(parser, argv=None):
+    """Parse the concise command facade or the legacy advanced CLI."""
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    if raw_args in ([], ['-h'], ['--help']):
+        print(_SIMPLE_HELP)
+        raise SystemExit(0)
+    if (len(raw_args) == 2 and raw_args[0] in _SIMPLE_COMMANDS
+            and raw_args[1] in {'-h', '--help'}):
+        print(_SIMPLE_HELP)
+        raise SystemExit(0)
+    if raw_args == ['--advanced-help']:
+        parser.print_help()
+        raise SystemExit(0)
+    try:
+        return parser.parse_args(_expand_simple_command(raw_args))
+    except ValueError as exc:
+        parser.error(str(exc))
+
+
 # ── Config file loader ───────────────────────────────────────────────────────
 
 def _apply_config_file(args):
@@ -3396,6 +3610,7 @@ def _print_migration_summary(results, report_summary, start_time):
         ("Prep Flow Parsing", results.get('prep', None)),
         ("Power BI Generation", results.get('generation', False)),
         ("Migration Report", report_summary is not None if results.get('generation') else None),
+        ("Fabric Deployment", results.get('deployment', None)),
     ]:
         if success is None:
             continue
@@ -4191,7 +4406,7 @@ def run_shared_model_migration(workbook_paths, model_name=None, output_dir=None,
                                culture=None, model_mode='import',
                                languages=None, merge_config_path=None,
                                save_config=False, strict_merge=False,
-                               output_format='pbip'):
+                               output_format='pbip', verify_open=True):
     """Orchestrate shared semantic model migration for multiple workbooks.
 
     Steps:
@@ -4297,6 +4512,10 @@ def run_shared_model_migration(workbook_paths, model_name=None, output_dir=None,
             )
 
             if result.get('model_path'):
+                if output_format == 'pbip' and verify_open:
+                    project_dir = os.path.dirname(result['model_path'])
+                    if not _run_openability_gate(project_dir):
+                        return ExitCode.VALIDATION_FAILED
                 return ExitCode.SUCCESS
             else:
                 return ExitCode.GENERAL_ERROR
@@ -4502,6 +4721,64 @@ def _run_remove_from_model(args):
 
     except Exception as e:
         logger.error("Remove-from-model failed: %s", e, exc_info=True)
+        print(f"\nError: {e}")
+        return ExitCode.GENERAL_ERROR
+
+
+# ── Functionality parity mode ────────────────────────────────────────────────
+
+def _run_parity_mode(args):
+    """Emit a functionality-parity scorecard (JSON + HTML). Returns ExitCode.
+
+    ``--parity`` always returns SUCCESS; ``--parity-strict`` returns
+    ASSESSMENT_FAILED when any in-use feature is unsupported.
+    """
+    try:
+        from powerbi_import.parity_registry import scan_workbook
+
+        # Load the extraction — include blending/hyper for accurate coverage.
+        extracted = {}
+        json_files = ['datasources', 'worksheets', 'dashboards', 'calculations',
+                      'parameters', 'filters', 'stories', 'actions', 'sets',
+                      'groups', 'bins', 'hierarchies', 'custom_sql', 'user_filters',
+                      'sort_orders', 'aliases', 'data_blending', 'hyper_files']
+        for jf in json_files:
+            fpath = os.path.join(_get_extract_dir(), f'{jf}.json')
+            if os.path.exists(fpath):
+                try:
+                    with open(fpath, 'r', encoding='utf-8') as f:
+                        extracted[jf] = json.load(f)
+                except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                    extracted[jf] = []
+
+        source_basename = os.path.splitext(os.path.basename(args.tableau_file))[0]
+        scan = scan_workbook(extracted, workbook=source_basename)
+
+        print_header("FUNCTIONALITY PARITY")
+        print(f"  Parity score : {scan.parity_score}%  ({scan.grade})")
+        counts = scan.status_counts
+        print(f"  exact {counts['exact']} · healed {counts['healed']} · "
+              f"approximated {counts['approximated']} · unsupported {counts['unsupported']}")
+        for u in scan.gaps:
+            print(f"    - [{u.status}] {u.label} ×{u.count} → {u.target}")
+
+        out_dir = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'assessments')
+        os.makedirs(out_dir, exist_ok=True)
+        json_path = os.path.join(out_dir, f'parity_scorecard_{source_basename}.json')
+        html_path = os.path.join(out_dir, f'parity_scorecard_{source_basename}.html')
+        scan.save_json(json_path)
+        scan.to_html(html_path)
+        print(f"\n  Parity scorecard saved to: {json_path}")
+        print(f"  Parity scorecard (HTML)  : {html_path}")
+
+        if getattr(args, 'parity_strict', False) and scan.unsupported_in_use:
+            print(f"\n  [PARITY-STRICT] {len(scan.unsupported_in_use)} unsupported "
+                  f"feature(s) in use — failing.")
+            return ExitCode.ASSESSMENT_FAILED
+        return ExitCode.SUCCESS
+
+    except Exception as e:
+        logger.error("Parity scan failed: %s", e, exc_info=True)
         print(f"\nError: {e}")
         return ExitCode.GENERAL_ERROR
 
@@ -4743,7 +5020,7 @@ def _run_assessment_mode(args, results):
 def main():
     """Main entry point — orchestrates the full migration pipeline."""
     parser = _build_argument_parser()
-    args = parser.parse_args()
+    args = _parse_cli_args(parser)
 
     # --qa-strict implies --qa
     if getattr(args, 'qa_strict', False):
@@ -4874,6 +5151,7 @@ def main():
             save_config=getattr(args, 'save_merge_config', False),
             strict_merge=getattr(args, 'strict_merge', False),
             output_format=getattr(args, 'output_format', 'pbip'),
+            verify_open=getattr(args, 'verify_open', True),
         )
 
         # Auto-deploy bundle if --deploy-bundle is given alongside --shared-model
@@ -4933,6 +5211,7 @@ def main():
             jsonl_log=getattr(args, 'jsonl_log', None),
             manifest=manifest_data,
             full_lineage=getattr(args, 'full_lineage', False),
+            verify_open=getattr(args, 'verify_open', True),
         )
 
     # ── Single file migration ─────────────────────────────────
@@ -5321,6 +5600,125 @@ def _record_zero_touch(args, source_basename, *, success, failure_mode='',
     )
     if tracker.total_count >= 3 or os.path.isfile(dashboard_path):
         tracker.save_dashboard(dashboard_path)
+
+
+def _run_autoheal(args, source_basename):
+    """Closed-loop autoheal so the generated .pbip opens cleanly in PBI Desktop."""
+    out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
+    project_dir = os.path.join(out_base, source_basename)
+    if not os.path.isdir(project_dir):
+        print(f"  ⚠ Autoheal skipped: project directory not found")
+        return
+    try:
+        from autoheal import AutoHealer, LogFileSource
+    except ImportError:
+        from powerbi_import.autoheal import AutoHealer, LogFileSource
+
+    autofix = bool(getattr(args, 'llm_autofix', False))
+    gateway = None
+    if autofix:
+        try:
+            from llm_gateway import LLMGateway
+        except ImportError:
+            from powerbi_import.llm_gateway import LLMGateway
+        gw_kwargs = {}
+        if getattr(args, 'llm_mode', None):
+            gw_kwargs['mode'] = args.llm_mode
+        if getattr(args, 'llm_local_url', None):
+            gw_kwargs['local_url'] = args.llm_local_url
+        try:
+            gateway = LLMGateway(**gw_kwargs)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  ⚠ Autoheal: LLM gateway unavailable ({exc}); deterministic-only")
+            gateway = None
+
+    log_path = getattr(args, 'autoheal_log', None)
+    source = None
+    if log_path and os.path.isfile(log_path):
+        source = LogFileSource(log_path)
+
+    healer = AutoHealer(gateway=gateway, autofix=autofix, error_source=source)
+    report = healer.heal_project(project_dir)
+    status = '✓' if report.clean else '⚠'
+    print(f"\n  Autoheal: {status} {len(report.actions)} fix(es) applied, "
+          f"{len(report.remaining_errors)} remaining"
+          + (" (LLM used)" if report.llm_used else ""))
+    for act in report.actions[:10]:
+        print(f"      • [{act.artifact}] {act.location}: {act.source} ({act.confidence})")
+    for err in report.remaining_errors[:10]:
+        print(f"      ✗ [{err.artifact}] {err.location}: {err.message}")
+    try:
+        with open(os.path.join(project_dir, 'autoheal_report.json'), 'w',
+                  encoding='utf-8') as f:
+            json.dump(report.to_dict(), f, indent=2)
+    except OSError:
+        pass
+
+
+def _run_desktop_probe(args, source_basename):
+    """Best-effort real Power BI Desktop open self-check on the generated .pbip."""
+    out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
+    project_dir = os.path.join(out_base, source_basename)
+    if not os.path.isdir(project_dir):
+        print(f"  ⚠ Desktop probe skipped: project directory not found")
+        return
+    import glob as _glob
+    pbips = _glob.glob(os.path.join(project_dir, '*.pbip'))
+    if not pbips:
+        print(f"  ⚠ Desktop probe skipped: no .pbip found in {project_dir}")
+        return
+    try:
+        from desktop_probe import probe_desktop_open
+    except ImportError:
+        from powerbi_import.desktop_probe import probe_desktop_open
+    report = probe_desktop_open(pbips[0])
+    icon = {'opened': '✓', 'unavailable': '•', 'crashed': '✗',
+            'timed_out': '⚠', 'error': '✗'}.get(report.status, '•')
+    print(f"\n  Desktop probe: {icon} {report.status}"
+          + (f" — {report.note}" if report.note else ""))
+    for sig in report.signals[:10]:
+        print(f"      • {sig}")
+    try:
+        with open(os.path.join(project_dir, 'desktop_probe_report.json'), 'w',
+                  encoding='utf-8') as f:
+            json.dump(report.to_dict(), f, indent=2)
+    except OSError:
+        pass
+
+
+def _run_openability_gate(project_dir):
+    """Run and persist the static Power BI openability gate for a project directory."""
+    if not os.path.isdir(project_dir):
+        print(f"  ⚠ Openability preflight skipped: project directory not found")
+        return True
+    try:
+        from openability import check_openability
+    except ImportError:
+        from powerbi_import.openability import check_openability
+    report = check_openability(project_dir)
+    if report.openable:
+        pq = next((c for c in report.checks if c.name == 'power_query'), None)
+        pq_note = f", {len(pq.issues)} Power Query issues" if pq and pq.issues else ""
+        warn = f" ({len(report.warnings)} warnings)" if report.warnings else ""
+        print(f"\n  Openability: ✓ project will open in PBI Desktop{pq_note}{warn}")
+    else:
+        print(f"\n  Openability: ✗ {len(report.blocking_issues)} blocking issue(s):")
+        for issue in report.blocking_issues[:20]:
+            print(f"      • {issue}")
+    try:
+        report_path = os.path.join(project_dir, 'openability_report.json')
+        with open(report_path, 'w', encoding='utf-8') as f:
+            json.dump(report.to_dict(), f, indent=2)
+    except OSError:
+        pass
+    return report.openable
+
+
+def _run_verify_open(args, source_basename):
+    """Run the static openability gate for a single generated migration."""
+    out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
+    project_dir = os.path.join(out_base, source_basename)
+    return _run_openability_gate(project_dir)
 
 
 def _run_qa_suite(args, source_basename):
@@ -6086,6 +6484,23 @@ def _process_twbx_post_generation(source_path, project_dir, source_basename):
     # ── 1b. Convert Hyper files to CSV so M queries can load data ────
     _convert_hyper_to_csv_in_data(data_dir, source_basename, project_dir)
 
+    # ── 1c. Canonicalise file tables for Fabric Notebook ingestion ──
+    if os.path.isdir(os.path.join(project_dir, f'{source_basename}.Notebook')):
+        try:
+            from powerbi_import.fabric_file_staging import (
+                stage_fabric_file_sources,
+            )
+            datasources_path = os.path.join(
+                _get_extract_dir(), 'datasources.json')
+            with open(datasources_path, encoding='utf-8') as stream:
+                datasources = json.load(stream)
+            staged = stage_fabric_file_sources(project_dir, datasources)
+            if staged:
+                print(f"  [OK] Staged {len(staged)} Fabric file source(s)")
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            raise RuntimeError(
+                f'Could not stage Fabric file sources: {exc}') from exc
+
     # ── 2. Update DataFolder parameter in expressions.tmdl ──────────
     #   M queries reference only the file basename (e.g. "nba_players.xlsx").
     #   DataFolder must point to the actual directory containing those files.
@@ -6180,7 +6595,12 @@ def _extract_twbx_data_files(args, source_basename):
     source = getattr(args, 'tableau_file', '')
     if not source or not source.lower().endswith('.twbx'):
         return
-    out_base = args.output_dir or os.path.join('artifacts', 'powerbi_projects', 'migrated')
+    default_root = (
+        os.path.join('artifacts', 'fabric_projects', 'migrated')
+        if getattr(args, 'output_format', 'pbip') == 'fabric'
+        else os.path.join('artifacts', 'powerbi_projects', 'migrated')
+    )
+    out_base = args.output_dir or default_root
     project_dir = os.path.join(out_base, source_basename)
     _process_twbx_post_generation(source, project_dir, source_basename)
 
@@ -6395,6 +6815,52 @@ def _run_deploy_to_pbi_service(args, source_basename):
         logger.error("Deployment failed: %s", exc, exc_info=True)
 
 
+def _run_deploy_to_fabric(args, source_basename):
+    """Deploy a generated Fabric-native project to a Fabric workspace."""
+    try:
+        from powerbi_import.deploy.deployer import FabricDeployer
+
+        print_header("DEPLOYING FABRIC PROJECT")
+        workspace_id = args.deploy
+        out_dir = args.output_dir or os.path.join(
+            'artifacts', 'fabric_projects', 'migrated')
+        project_dir = os.path.join(out_dir, source_basename)
+        print(f"  Workspace: {workspace_id}")
+        print(f"  Project:   {project_dir}")
+
+        deployer = FabricDeployer()
+        result = deployer.deploy_fabric_project(
+            workspace_id=workspace_id,
+            project_dir=project_dir,
+            project_name=source_basename,
+        )
+        preflight = result.get('preflight', {})
+        if preflight:
+            workspace_name = preflight.get('workspace_name') or workspace_id
+            print(f"  ✓ Preflight: {workspace_name} "
+                  f"({preflight.get('accessible_items', 0)} visible items)")
+        for artifact in result.get('artifacts', []):
+            print(f"  ✓ {artifact['type']}: {artifact['status']} "
+                  f"(id={artifact['item_id']})")
+        if getattr(args, 'deploy_refresh', False):
+            pipeline_id = result.get('item_ids', {}).get('DataPipeline')
+            job = deployer.run_fabric_pipeline(workspace_id, pipeline_id)
+            print(f"  ✓ Data Pipeline completed (job={job.get('id', '?')})")
+            result['pipeline_job'] = job
+        return result
+    except Exception as exc:
+        print(f"  ✗ Fabric deployment error: {exc}")
+        logger.error("Fabric deployment failed: %s", exc, exc_info=True)
+        return None
+
+
+def _run_generated_project_deployment(args, source_basename):
+    """Select the deployment backend for the generated output format."""
+    if getattr(args, 'output_format', 'pbip') == 'fabric':
+        return _run_deploy_to_fabric(args, source_basename)
+    return _run_deploy_to_pbi_service(args, source_basename)
+
+
 def _run_schedule_migration(args, source_basename):
     """Extract Tableau refresh schedules and generate PBI refresh config."""
     try:
@@ -6507,6 +6973,11 @@ def _run_single_migration(args):
     # Step 1c: Assessment (optional)
     if args.assess and results.get('extraction'):
         return _run_assessment_mode(args, results)
+
+    # Step 1d: Functionality parity scorecard (optional)
+    if (getattr(args, 'parity', False) or getattr(args, 'parity_strict', False)) \
+            and results.get('extraction'):
+        return _run_parity_mode(args)
 
     # Step 2: Generate .pbip project
     source_basename = os.path.splitext(os.path.basename(args.tableau_file))[0]
@@ -6635,6 +7106,22 @@ def _run_single_migration(args):
             progress.fail("QA strict: real-world QA checks failed")
             return ExitCode.VALIDATION_FAILED
 
+    # Step 3f2: Closed-loop autoheal (--autoheal flag)
+    if getattr(args, 'autoheal', False) and results.get('generation') and not args.dry_run:
+        _run_autoheal(args, source_basename)
+
+    # Step 3f3: Static openability gate (enabled by default; --no-verify-open to skip)
+    if (getattr(args, 'verify_open', True)
+            and getattr(args, 'output_format', 'pbip') == 'pbip'
+            and results.get('generation') and not args.dry_run):
+        if not _run_verify_open(args, source_basename):
+            progress.fail("Openability preflight: project would NOT open in PBI Desktop")
+            return ExitCode.VALIDATION_FAILED
+
+    # Step 3f4: Best-effort real Desktop open self-check (explicit --desktop-probe only)
+    if getattr(args, 'desktop_probe', False) and results.get('generation') and not args.dry_run:
+        _run_desktop_probe(args, source_basename)
+
     # Step 3g: Auto-rollback quality gate (Phase 9)
     rollback_result = None
     if results.get('generation') and not args.dry_run:
@@ -6674,9 +7161,13 @@ def _run_single_migration(args):
     # Step 4c–4d: Comparison report and telemetry dashboard (optional)
     _run_post_generation_reports(args, source_basename, results)
 
-    # Step 5: Deploy to Power BI Service (optional)
+    # Step 5: Deploy to Power BI Service or Fabric (optional)
     if getattr(args, 'deploy', None) and results.get('generation') and not args.dry_run:
-        _run_deploy_to_pbi_service(args, source_basename)
+        deployment_result = _run_generated_project_deployment(
+            args, source_basename)
+        if getattr(args, 'output_format', 'pbip') == 'fabric':
+            results['deployment'] = bool(
+                deployment_result and deployment_result.get('success'))
 
     # Step 5b: Migrate refresh schedules (optional, requires --server + --migrate-schedules)
     if getattr(args, 'migrate_schedules', False) and results.get('generation'):

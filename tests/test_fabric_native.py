@@ -383,6 +383,22 @@ class TestCalcColumnUtils:
         assert 'withColumn' in result
         assert 'F.when' in result
 
+    def test_tableau_formula_to_pyspark_elseif_chain(self):
+        from powerbi_import.calc_column_utils import tableau_formula_to_pyspark
+        result = tableau_formula_to_pyspark(
+            "IF [Unit Price] <= 2500 then 'A' "
+            "ELSEIF [Unit Price] <= 5000 then 'B' ELSE 'C' END",
+            'Price Group',
+        )
+        assert result == (
+            'df = df.withColumn("Price Group", '
+            'F.when(F.col("Unit Price") <= 2500, \'A\')'
+            '.when(F.col("Unit Price") <= 5000, \'B\')'
+            '.otherwise(\'C\'))')
+        compile(result, '<generated-pyspark>', 'exec')
+        assert 'ELSEIF' not in result
+        assert 'THEN' not in result
+
     def test_tableau_formula_to_pyspark_column_ref(self):
         from powerbi_import.calc_column_utils import tableau_formula_to_pyspark
         result = tableau_formula_to_pyspark('[Region]', 'RegionCopy')
@@ -429,6 +445,18 @@ class TestLakehouseGenerator:
             data = json.load(f)
         assert '$schema' in data
         assert 'tables' in data
+
+    def test_generate_creates_official_metadata_part(
+            self, temp_dir, sample_extracted_data):
+        from powerbi_import.lakehouse_generator import LakehouseGenerator
+        gen = LakehouseGenerator(temp_dir, 'TestProject')
+        gen.generate(sample_extracted_data)
+        metadata_path = os.path.join(
+            temp_dir, 'TestProject.Lakehouse', 'lakehouse.metadata.json')
+        assert os.path.isfile(metadata_path)
+        with open(metadata_path, encoding='utf-8') as f:
+            metadata = json.load(f)
+        assert metadata['defaultSchema'] == 'dbo'
 
     def test_generate_returns_stats(self, temp_dir, sample_extracted_data):
         from powerbi_import.lakehouse_generator import LakehouseGenerator
@@ -492,6 +520,16 @@ class TestLakehouseGenerator:
         stats = gen.generate(sample_extracted_no_calcs)
         assert stats['calc_columns'] == 0
 
+    def test_file_sources_are_not_duplicated_in_dataflow(
+            self, temp_dir, sample_extracted_no_calcs):
+        from powerbi_import.dataflow_generator import DataflowGenerator
+        gen = DataflowGenerator(temp_dir, 'FileProject')
+
+        stats = gen.generate(sample_extracted_no_calcs)
+
+        assert stats['queries'] == 0
+        assert stats['calc_columns'] == 0
+
     def test_ddl_contains_delta(self, temp_dir, sample_extracted_data):
         from powerbi_import.lakehouse_generator import LakehouseGenerator
         gen = LakehouseGenerator(temp_dir, 'TestProject')
@@ -550,6 +588,30 @@ class TestDataflowGenerator:
         mashup_path = os.path.join(temp_dir, 'TestProject.Dataflow', 'mashup.pq')
         assert os.path.isfile(mashup_path)
 
+    def test_deployable_parts_define_lakehouse_destinations(
+            self, temp_dir, sample_extracted_data):
+        from powerbi_import.dataflow_generator import DataflowGenerator
+        gen = DataflowGenerator(temp_dir, 'TestProject')
+        gen.generate(sample_extracted_data)
+        dataflow_dir = os.path.join(temp_dir, 'TestProject.Dataflow')
+
+        with open(os.path.join(dataflow_dir, 'mashup.pq'), encoding='utf-8') as f:
+            mashup = f.read()
+        with open(os.path.join(dataflow_dir, 'queryMetadata.json'), encoding='utf-8') as f:
+            metadata = json.load(f)
+
+        assert '[DataDestinations = {' in mashup
+        assert 'Lakehouse.Contents(' in mashup
+        assert '?[Data]?' in mashup
+        assert metadata['formatVersion'] == '202502'
+        destination_queries = [
+            query for query in metadata['queriesMetadata'].values()
+            if query['queryName'].endswith('_DataDestination')
+        ]
+        assert destination_queries
+        assert all(query['isHidden'] for query in destination_queries)
+        assert all(not query['loadEnabled'] for query in destination_queries)
+
     def test_definition_has_lakehouse_destination(self, temp_dir, sample_extracted_data):
         from powerbi_import.dataflow_generator import DataflowGenerator
         gen = DataflowGenerator(temp_dir, 'TestProject')
@@ -572,6 +634,28 @@ class TestDataflowGenerator:
         gen = DataflowGenerator(temp_dir, 'TestProject')
         stats = gen.generate(sample_extracted_data)
         assert stats['queries'] >= 3  # 2 tables + 1 custom SQL
+
+    def test_connected_dataflow_does_not_duplicate_calc_columns(
+            self, temp_dir, sample_extracted_data):
+        from powerbi_import.dataflow_generator import DataflowGenerator
+        extracted = dict(sample_extracted_data)
+        extracted['datasources'] = [dict(extracted['datasources'][0])]
+        extracted['datasources'][0]['connection'] = {
+            'type': 'SQL Server',
+            'details': {'server': 'sql', 'database': 'sales'},
+        }
+        gen = DataflowGenerator(temp_dir, 'ConnectedProject')
+
+        stats = gen.generate(extracted)
+
+        path = os.path.join(
+            temp_dir, 'ConnectedProject.Dataflow',
+            'dataflow_definition.json')
+        with open(path, encoding='utf-8') as stream:
+            definition = json.load(stream)
+        assert stats['queries'] > 0
+        assert stats['calc_columns'] == 0
+        assert 'Table.AddColumn' not in definition['mashupDocument']
 
     def test_mashup_shared_name_quoted_when_contains_space(self, temp_dir):
         from powerbi_import.dataflow_generator import DataflowGenerator
@@ -616,6 +700,65 @@ class TestNotebookGenerator:
         assert nb['nbformat'] == 4
         assert nb['metadata']['kernelspec']['name'] == 'synapse_pyspark'
 
+    def test_generate_creates_deployable_notebook_part(
+            self, temp_dir, sample_extracted_data):
+        from powerbi_import.notebook_generator import NotebookGenerator
+        gen = NotebookGenerator(temp_dir, 'TestProject')
+        stats = gen.generate(sample_extracted_data)
+        notebook_path = os.path.join(
+            temp_dir, 'TestProject.Notebook', 'artifact.content.ipynb')
+        assert os.path.isfile(notebook_path)
+        with open(notebook_path, encoding='utf-8') as f:
+            notebook = json.load(f)
+        assert notebook['nbformat'] == 4
+        assert stats['notebooks'] == 1
+
+        lakehouse = notebook['metadata']['dependencies']['lakehouse']
+        assert lakehouse['default_lakehouse'] == gen.lakehouse_id
+        assert lakehouse['default_lakehouse_workspace_id'] == gen.workspace_id
+        assert lakehouse['default_lakehouse_name'] == 'TestProject_Lakehouse'
+
+    def test_excel_notebook_reads_locally_staged_csv(
+            self, temp_dir, sample_extracted_no_calcs):
+        from powerbi_import.notebook_generator import NotebookGenerator
+        gen = NotebookGenerator(temp_dir, 'ExcelProject')
+        extracted = dict(sample_extracted_no_calcs)
+        extracted['datasources'] = [dict(extracted['datasources'][0])]
+        extracted['datasources'][0]['connection'] = {
+            'type': 'Excel', 'details': {'filename': 'sales.xlsx'},
+        }
+
+        gen.generate(extracted)
+
+        path = os.path.join(
+            temp_dir, 'ExcelProject.Notebook', 'artifact.content.ipynb')
+        with open(path, encoding='utf-8') as stream:
+            notebook = json.load(stream)
+        source = json.dumps(notebook['cells'])
+        assert 'Files/products.csv' in source
+        assert 'com.crealytics.spark.excel' not in source
+
+    def test_connected_sources_are_not_duplicated_in_notebook(
+            self, temp_dir, sample_extracted_no_calcs):
+        from powerbi_import.notebook_generator import NotebookGenerator
+        extracted = dict(sample_extracted_no_calcs)
+        extracted['datasources'] = [dict(extracted['datasources'][0])]
+        extracted['datasources'][0]['connection'] = {
+            'type': 'SQL Server',
+            'details': {'server': 'sql', 'database': 'sales'},
+        }
+        gen = NotebookGenerator(temp_dir, 'ConnectedProject')
+
+        gen.generate(extracted)
+
+        path = os.path.join(
+            temp_dir, 'ConnectedProject.Notebook', 'artifact.content.ipynb')
+        with open(path, encoding='utf-8') as stream:
+            notebook = json.load(stream)
+        source = json.dumps(notebook['cells'])
+        assert 'Loading 0 table(s)' in source
+        assert '.format(\\"jdbc\\")' not in source
+
     def test_generate_creates_transformations_notebook(self, temp_dir, sample_extracted_data):
         from powerbi_import.notebook_generator import NotebookGenerator
         gen = NotebookGenerator(temp_dir, 'TestProject')
@@ -627,7 +770,7 @@ class TestNotebookGenerator:
         from powerbi_import.notebook_generator import NotebookGenerator
         gen = NotebookGenerator(temp_dir, 'TestProject')
         stats = gen.generate(sample_extracted_data)
-        assert stats['notebooks'] >= 2
+        assert stats['notebooks'] == 1
         assert stats['cells'] > 0
         assert stats['calc_columns'] >= 1
 
@@ -703,6 +846,40 @@ class TestPipelineGenerator:
         assert 'RefreshDataflow' in types
         assert 'TridentNotebook' in types
         assert 'TridentDatasetRefresh' in types
+
+    def test_pipeline_writes_official_part_and_refreshes_dataflow_once(
+            self, temp_dir, sample_extracted_data):
+        from powerbi_import.pipeline_generator import PipelineGenerator
+        gen = PipelineGenerator(temp_dir, 'TestPipeline')
+        stats = gen.generate(sample_extracted_data)
+        pipeline_path = os.path.join(
+            temp_dir, 'TestPipeline.Pipeline', 'pipeline-content.json')
+        assert os.path.isfile(pipeline_path)
+        with open(pipeline_path, encoding='utf-8') as f:
+            pipeline = json.load(f)
+        refreshes = [
+            activity for activity in pipeline['properties']['activities']
+            if activity['type'] == 'RefreshDataflow'
+        ]
+        assert len(refreshes) == 1
+        assert stats['activities'] == 3
+
+    def test_file_only_pipeline_runs_notebook_then_semantic_model(
+            self, temp_dir, sample_extracted_no_calcs):
+        from powerbi_import.pipeline_generator import PipelineGenerator
+        gen = PipelineGenerator(temp_dir, 'FilePipeline')
+
+        stats = gen.generate(sample_extracted_no_calcs)
+
+        pipeline_path = os.path.join(
+            temp_dir, 'FilePipeline.Pipeline', 'pipeline-content.json')
+        with open(pipeline_path, encoding='utf-8') as stream:
+            pipeline = json.load(stream)
+        activities = pipeline['properties']['activities']
+        assert [activity['type'] for activity in activities] == [
+            'TridentNotebook', 'TridentDatasetRefresh']
+        assert activities[0]['dependsOn'] == []
+        assert stats == {'activities': 2, 'stages': 2}
 
     def test_pipeline_creates_platform_file(self, temp_dir, sample_extracted_data):
         from powerbi_import.pipeline_generator import PipelineGenerator
@@ -867,6 +1044,86 @@ class TestFabricProjectGenerator:
         gen = FabricProjectGenerator(output_dir=temp_dir)
         results = gen.generate_project('TestProject', sample_extracted_data)
         assert 'generated_at' in results
+
+    def test_single_workbook_fabric_bundle_contract(self, temp_dir,
+                                                    sample_extracted_data):
+        from powerbi_import.fabric_project_generator import FabricProjectGenerator
+
+        gen = FabricProjectGenerator(output_dir=temp_dir)
+        results = gen.generate_project('ContractProbe', sample_extracted_data)
+        project_dir = results['project_path']
+
+        expected_artifacts = {
+            'Lakehouse': 'Lakehouse',
+            'Dataflow': 'Dataflow',
+            'Notebook': 'Notebook',
+            'SemanticModel': 'SemanticModel',
+            'Report': 'Report',
+            'Pipeline': 'DataPipeline',
+        }
+        logical_ids = set()
+        for suffix, item_type in expected_artifacts.items():
+            artifact_dir = os.path.join(project_dir, f'ContractProbe.{suffix}')
+            assert os.path.isdir(artifact_dir), f'Missing {suffix} artifact'
+            with open(os.path.join(artifact_dir, '.platform'), encoding='utf-8') as f:
+                platform = json.load(f)
+            assert platform['metadata']['type'] == item_type
+            logical_id = platform['config']['logicalId']
+            assert logical_id
+            logical_ids.add(logical_id)
+        assert len(logical_ids) == len(expected_artifacts)
+
+        lakehouse_path = os.path.join(
+            project_dir, 'ContractProbe.Lakehouse', 'lakehouse_definition.json')
+        dataflow_path = os.path.join(
+            project_dir, 'ContractProbe.Dataflow', 'dataflow_definition.json')
+        with open(lakehouse_path, encoding='utf-8') as f:
+            lakehouse = json.load(f)
+        with open(dataflow_path, encoding='utf-8') as f:
+            dataflow = json.load(f)
+        lakehouse_tables = {table['name'] for table in lakehouse['tables']}
+        destination_tables = {
+            query['destination']['tableName'] for query in dataflow['queries']
+        }
+        assert destination_tables == lakehouse_tables
+
+        tables_dir = os.path.join(
+            project_dir, 'ContractProbe.SemanticModel', 'definition', 'tables')
+        table_tmdl = '\n'.join(
+            open(os.path.join(tables_dir, name), encoding='utf-8').read()
+            for name in os.listdir(tables_dir) if name.endswith('.tmdl')
+        )
+        assert '= entity' in table_tmdl
+        assert 'mode: directLake' in table_tmdl
+        assert '= m' not in table_tmdl
+        assert 'mode: import' not in table_tmdl
+
+        report_dir = os.path.join(project_dir, 'ContractProbe.Report')
+        with open(os.path.join(report_dir, 'definition.pbir'), encoding='utf-8') as f:
+            report_definition = json.load(f)
+        model_path = report_definition['datasetReference']['byPath']['path']
+        assert os.path.normpath(os.path.join(report_dir, model_path)) == os.path.normpath(
+            os.path.join(project_dir, 'ContractProbe.SemanticModel'))
+        assert os.path.isfile(os.path.join(report_dir, 'definition', 'report.json'))
+
+        pipeline_path = os.path.join(
+            project_dir, 'ContractProbe.Pipeline', 'pipeline_definition.json')
+        with open(pipeline_path, encoding='utf-8') as f:
+            pipeline = json.load(f)
+        serialized_pipeline = json.dumps(pipeline)
+        assert '{{' not in serialized_pipeline
+        activities = pipeline['properties']['activities']
+        activity_names = {activity['name'] for activity in activities}
+        dependencies = {
+            dependency['activity']
+            for activity in activities
+            for dependency in activity.get('dependsOn', [])
+        }
+        assert dependencies <= activity_names
+
+        validation = results['validation']
+        assert validation['valid'], validation['errors']
+        assert validation['artifacts_checked'] == 6
 
 
 # ════════════════════════════════════════════════════════════════════

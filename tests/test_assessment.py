@@ -477,7 +477,7 @@ class TestRunAssessment(unittest.TestCase):
     def test_green_assessment(self):
         report = run_assessment(_simple_extracted(), workbook_name="Simple")
         self.assertEqual(report.overall_score, "GREEN")
-        self.assertEqual(len(report.categories), 14)
+        self.assertEqual(len(report.categories), 15)
         self.assertTrue(report.total_checks > 0)
 
     def test_red_assessment(self):

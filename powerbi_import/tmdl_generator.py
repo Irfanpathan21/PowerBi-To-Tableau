@@ -1903,9 +1903,10 @@ def _build_semantic_model(datasources, report_name="Report", extra_objects=None,
 
     effective_culture = culture or "en-US"
 
+    is_direct_lake = (model_mode or '').lower() == 'directlake'
     model = {
         "name": report_name,
-        "compatibilityLevel": 1550,
+        "compatibilityLevel": 1604 if is_direct_lake else 1550,
         "model": {
             "culture": effective_culture,
             "defaultPowerBIDataSourceVersion": "powerBI_V3",
@@ -1923,6 +1924,9 @@ def _build_semantic_model(datasources, report_name="Report", extra_objects=None,
     model['_model_mode'] = model_mode or 'import'
     model['_composite_threshold'] = composite_threshold
     model['_agg_tables'] = agg_tables or 'none'
+    model['_direct_lake'] = extra_objects.get('_direct_lake', {})
+    if is_direct_lake:
+        model['model']['defaultMode'] = 'directLake'
 
     # Store raw datasources for M parameter generation (server/database)
     model['_datasources'] = datasources
@@ -2587,8 +2591,11 @@ def _create_and_validate_relationships(model, datasources):
 
 def _apply_semantic_enrichments(model, extra_objects, main_table_name, column_table_map, datasources):
     """Phases 5-12: Sets, date table, hierarchies, parameters, RLS, cross-table inference, perspectives."""
+    is_direct_lake = model.get('_model_mode', '').lower() == 'directlake'
+
     # Phase 5: Add sets, groups, bins as calculated columns
-    _process_sets_groups_bins(model, extra_objects, main_table_name, column_table_map)
+    if not is_direct_lake:
+        _process_sets_groups_bins(model, extra_objects, main_table_name, column_table_map)
 
     # Phase 6: Automatic date table if date columns detected
     # Skip if the source already has a date/calendar table (name-based or column-heuristic)
@@ -2605,7 +2612,7 @@ def _apply_semantic_enrichments(model, extra_objects, main_table_name, column_ta
                     break
             if has_date_columns:
                 break
-    if has_date_columns and not has_existing_date_table:
+    if has_date_columns and not has_existing_date_table and not is_direct_lake:
         _add_date_table(model)
 
     # Phase 7: Hierarchies from Tableau drill-paths
@@ -2615,14 +2622,17 @@ def _apply_semantic_enrichments(model, extra_objects, main_table_name, column_ta
     _auto_date_hierarchies(model)
 
     # Phase 8: Parameter tables (What-If parameters)
-    _create_parameter_tables(model, extra_objects.get('parameters', []), main_table_name)
+    if not is_direct_lake:
+        _create_parameter_tables(model, extra_objects.get('parameters', []), main_table_name)
 
     # Phase 8b: Calculation groups (measure-switching parameters)
-    _create_calculation_groups(model, extra_objects.get('parameters', []), main_table_name)
+    if not is_direct_lake:
+        _create_calculation_groups(model, extra_objects.get('parameters', []), main_table_name)
 
     # Phase 8c: Field parameters (dimension-switching parameters with NAMEOF)
-    _create_field_parameters(model, extra_objects.get('parameters', []),
-                             main_table_name, column_table_map)
+    if not is_direct_lake:
+        _create_field_parameters(model, extra_objects.get('parameters', []),
+                                 main_table_name, column_table_map)
 
     # Phase 9: RLS roles from Tableau user filters / security
     _create_rls_roles(model, extra_objects.get('user_filters', []),
@@ -2987,20 +2997,22 @@ def _build_table(table, connection, calculations, columns_metadata, dax_context=
         if ds_dt and ds_dt != col.get('datatype', ''):
             col['datatype'] = ds_dt
 
-    # Generate M query: use Prep flow override if available, else generate from connection
-    if m_query_override:
-        m_query = m_query_override
-    else:
-        m_query = generate_power_query_m(connection, table)
+    is_direct_lake = (model_mode or '').lower() == 'directlake'
+    if not is_direct_lake:
+        # Generate M query: use Prep flow override if available, else generate from connection
+        if m_query_override:
+            m_query = m_query_override
+        else:
+            m_query = generate_power_query_m(connection, table)
 
-    # Inject TWB-embedded transformation steps from column metadata
-    m_steps = _build_m_transform_steps(columns, col_metadata_map)
-    if m_steps:
-        m_query = inject_m_steps(m_query, m_steps)
+        # Inject TWB-embedded transformation steps from column metadata
+        m_steps = _build_m_transform_steps(columns, col_metadata_map)
+        if m_steps:
+            m_query = inject_m_steps(m_query, m_steps)
 
-    # Wrap Source step with try...otherwise for graceful error handling
-    col_names = [c.get('name', '') for c in columns if c.get('name')]
-    m_query = wrap_source_with_try_otherwise(m_query, col_names)
+        # Wrap Source step with try...otherwise for graceful error handling
+        col_names = [c.get('name', '') for c in columns if c.get('name')]
+        m_query = wrap_source_with_try_otherwise(m_query, col_names)
 
     # Determine partition mode based on model_mode
     # For composite: large tables use directQuery, small/lookup use import
@@ -3013,19 +3025,32 @@ def _build_table(table, connection, calculations, columns_metadata, dax_context=
         else:
             partition_mode = 'import'
 
+    if is_direct_lake:
+        from .fabric_naming import sanitize_table_name
+        partition = {
+            "name": f"Partition-{table_name}",
+            "mode": "directLake",
+            "source": {
+                "type": "entity",
+                "entityName": sanitize_table_name(table_name),
+                "schemaName": "dbo",
+                "expressionSource": "DatabaseQuery",
+            },
+        }
+    else:
+        partition = {
+            "name": f"Partition-{table_name}",
+            "mode": partition_mode,
+            "source": {
+                "type": "m",
+                "expression": m_query,
+            },
+        }
+
     result_table = {
         "name": table_name,
         "columns": [],
-        "partitions": [
-            {
-                "name": f"Partition-{table_name}",
-                "mode": partition_mode,
-                "source": {
-                    "type": "m",
-                    "expression": m_query
-                }
-            }
-        ],
+        "partitions": [partition],
         "measures": []
     }
 
@@ -6323,8 +6348,14 @@ def _write_tmdl_files(model_data, output_dir):
     _write_relationships_tmdl(def_dir, relationships)
 
     # 4. expressions.tmdl (with datasource parameters)
-    _write_expressions_tmdl(def_dir, tables, datasources=model_data.get('_datasources'),
-                            incremental_params=model_data.get('_incremental_params'))
+    if model_data.get('_model_mode', '').lower() == 'directlake':
+        _write_direct_lake_expression(
+            def_dir,
+            model_data.get('_direct_lake', {}),
+        )
+    else:
+        _write_expressions_tmdl(def_dir, tables, datasources=model_data.get('_datasources'),
+                                incremental_params=model_data.get('_incremental_params'))
 
     # 5. roles.tmdl
     if roles:
@@ -6840,6 +6871,8 @@ def _write_model_tmdl(def_dir, model, tables, roles=None, relationships=None):
     lines.append(f"\tculture: {culture}")
     lines.append("\tdefaultPowerBIDataSourceVersion: powerBI_V3")
     lines.append("\tsourceQueryCulture: en-US")
+    if model.get('defaultMode') == 'directLake':
+        lines.append("\tdefaultMode: directLake")
     if has_calc_groups:
         lines.append("\tdiscourageImplicitMeasures")
     lines.append("\tdataAccessOptions")
@@ -6867,8 +6900,9 @@ def _write_model_tmdl(def_dir, model, tables, roles=None, relationships=None):
             lines.append(f"ref relationship {rel_id}")
         lines.append("")
 
-    # Ref expression for the DataFolder parameter
-    lines.append("ref expression DataFolder")
+    # Ref the storage expression used by every table partition.
+    expression_name = 'DatabaseQuery' if model.get('defaultMode') == 'directLake' else 'DataFolder'
+    lines.append(f"ref expression {expression_name}")
     lines.append("")
 
     # Ref roles (RLS)
@@ -7853,6 +7887,27 @@ def _fix_m_if_else_balance(m_expr):
     return m_expr
 
 
+def _write_direct_lake_expression(def_dir, direct_lake):
+    """Write the shared OneLake expression for Direct Lake entity partitions."""
+    workspace_id = direct_lake.get('workspace_id', '')
+    lakehouse_id = direct_lake.get('lakehouse_id', '')
+    source_url = (
+        'https://onelake.dfs.fabric.microsoft.com/'
+        f'{workspace_id}/{lakehouse_id}'
+    )
+    lines = [
+        'expression DatabaseQuery =',
+        '\t\tlet',
+        f'\t\t\tSource = AzureStorage.DataLake("{source_url}", [HierarchicalNavigation=true])',
+        '\t\tin',
+        '\t\t\tSource',
+        '',
+    ]
+    path = os.path.join(def_dir, 'expressions.tmdl')
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+
+
 def _write_partition(lines, table_name, partition):
     """Write a partition in TMDL."""
     part_name = f"{table_name}-{uuid.uuid4()}"
@@ -7863,6 +7918,18 @@ def _write_partition(lines, table_name, partition):
 
     lines.append(f"\tpartition {_quote_name(part_name)} = {source_type}")
     lines.append(f"\t\tmode: {mode}")
+
+    if source_type == 'entity':
+        lines.append("\t\tsource")
+        lines.append(f"\t\t\tentityName: {_quote_name(source.get('entityName', table_name))}")
+        schema_name = source.get('schemaName', '')
+        if schema_name:
+            lines.append(f"\t\t\tschemaName: {_quote_name(schema_name)}")
+        lines.append(
+            f"\t\t\texpressionSource: {_quote_name(source.get('expressionSource', 'DatabaseQuery'))}"
+        )
+        lines.append("")
+        return
 
     # Calculation group partitions have no source expression
     if source_type == 'calculationGroup':

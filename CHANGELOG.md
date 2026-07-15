@@ -1,5 +1,24 @@
 # Changelog
 
+## v44.0.0 — Agentic & Copilot-Native Migration
+
+### Highlights
+- **GitHub Copilot skill (Sprint 215)**: a repo-scoped skill at `.github/skills/tableau-to-powerbi/SKILL.md` (plus a `references/` bundle) that teaches any Copilot / agent-mode session how to run the pipeline safely — canonical commands, output layout, a "fix-at-the-source" ownership map, a troubleshooting playbook, and secret-handling rules. A new `scripts/validate_skills.py` linter validates frontmatter, relative links, referenced CLI flags, and embedded-secret detection.
+- **MCP server (Sprint 216)**: `powerbi_import/mcp_server.py` exposes the engine as Model Context Protocol tools over stdlib JSON-RPC (stdio) — `assess`, `migrate`, `qa`, `parity_scan`, `shared_model`, `diff`, and a guarded `deploy`. Assessment/QA/parity reports are exposed as MCP resources. Zero external dependencies.
+- **Natural-language remediation (Sprint 217)**: `powerbi_import/remediation.py` turns assessment/healing findings into plain-language explanations and source-targeted fix suggestions, each with an owning file/agent and a confidence score. Offline-first (deterministic templates); optional LLM refinement via `refine_with_llm`.
+- **Conversational assessment (Sprint 218)**: `powerbi_import/conversational.py` answers grounded questions ("what won't migrate cleanly?", "which datasources need a gateway?", "give me a plan") from the assessment payload — every answer carries evidence rows, no guessing.
+- **Agent-surface guardrails (Sprint 219)**: snapshot-guarded MCP tool contracts and a safety suite (deploy gating, secret-argument refusal, LLM opt-in, no secrets in skill docs).
+
+### Safety
+- The MCP `deploy` tool is **dry-run by default**, refuses arguments whose names look like secrets, and reads credentials from the environment only.
+- The LLM remediation path is opt-in; the full offline path requires no network access.
+
+### Affected Areas
+- `.github/skills/tableau-to-powerbi/` (new skill + references), `scripts/validate_skills.py` (new).
+- `powerbi_import/mcp_server.py`, `powerbi_import/remediation.py`, `powerbi_import/conversational.py` (new).
+- `docs/AGENT_SURFACE.md` (new), `docs/ROADMAP.md` (v44 marked shipped).
+- Tests: `tests/test_skill_docs.py`, `test_mcp_server.py`, `test_remediation.py`, `test_conversational_assess.py`, `test_agent_contracts.py`, `test_agent_safety.py` (100 new tests).
+
 ## v40.0.0 — VS Code Extension & Interactive Tooling
 
 ### Highlights

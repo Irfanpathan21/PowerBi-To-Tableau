@@ -8,6 +8,7 @@ import_shared_model, _build_visual_query) behave correctly.
 import argparse
 import os
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 from io import StringIO
@@ -66,6 +67,24 @@ class TestArgumentParserHelpers(unittest.TestCase):
         self.assertTrue(args.compare)
         self.assertTrue(args.dashboard)
 
+    def test_static_openability_is_enabled_by_default(self):
+        parser = self._get_parser()
+        args = parser.parse_args(['test.twbx'])
+        self.assertTrue(args.verify_open)
+        self.assertFalse(args.desktop_probe)
+
+    def test_static_openability_can_be_disabled_explicitly(self):
+        parser = self._get_parser()
+        args = parser.parse_args(['test.twbx', '--no-verify-open'])
+        self.assertFalse(args.verify_open)
+        self.assertFalse(args.desktop_probe)
+
+    def test_desktop_probe_remains_explicit(self):
+        parser = self._get_parser()
+        args = parser.parse_args(['test.twbx', '--desktop-probe'])
+        self.assertTrue(args.verify_open)
+        self.assertTrue(args.desktop_probe)
+
     def test_deploy_args_present(self):
         parser = self._get_parser()
         args = parser.parse_args(['test.twbx', '--deploy', 'WS123'])
@@ -103,11 +122,249 @@ class TestArgumentParserHelpers(unittest.TestCase):
         self.assertEqual(args.deploy, 'WS1')
         self.assertEqual(args.parallel, 2)
 
+    def test_simple_commands_are_limited_to_eight(self):
+        import migrate
+        self.assertEqual(len(migrate._SIMPLE_COMMANDS), 8)
+
+    def test_simple_migrate_command(self):
+        import migrate
+        args = migrate._parse_cli_args(
+            self._get_parser(), ['migrate', 'sales.twbx', '--verbose'])
+        self.assertEqual(args.tableau_file, 'sales.twbx')
+        self.assertTrue(args.verbose)
+
+    def test_simple_assess_batch_fabric_and_qa_commands(self):
+        import migrate
+        parser = self._get_parser()
+
+        assess = migrate._parse_cli_args(parser, ['assess', 'sales.twbx'])
+        batch = migrate._parse_cli_args(parser, ['batch', 'portfolio'])
+        fabric = migrate._parse_cli_args(parser, ['fabric', 'sales.twbx'])
+        qa = migrate._parse_cli_args(parser, ['qa', 'sales.twbx'])
+
+        self.assertTrue(assess.assess)
+        self.assertEqual(batch.batch, 'portfolio')
+        self.assertEqual(fabric.output_format, 'fabric')
+        self.assertTrue(qa.qa)
+
+    def test_simple_server_merge_and_deploy_commands(self):
+        import migrate
+        parser = self._get_parser()
+
+        server = migrate._parse_cli_args(
+            parser, ['server', 'https://tableau.example', 'Sales'])
+        merge = migrate._parse_cli_args(
+            parser, ['merge', 'a.twbx', 'b.twbx', '--model-name', 'Sales'])
+        deploy = migrate._parse_cli_args(
+            parser, ['deploy', 'sales.twbx', 'workspace-1'])
+
+        self.assertEqual(server.workbook, 'Sales')
+        self.assertEqual(merge.shared_model, ['a.twbx', 'b.twbx'])
+        self.assertEqual(merge.model_name, 'Sales')
+        self.assertEqual(deploy.output_format, 'fabric')
+        self.assertEqual(deploy.deploy, 'workspace-1')
+        self.assertTrue(deploy.deploy_refresh)
+
+    def test_legacy_flag_cli_remains_compatible(self):
+        import migrate
+        args = migrate._parse_cli_args(
+            self._get_parser(), ['sales.twbx', '--assess'])
+        self.assertEqual(args.tableau_file, 'sales.twbx')
+        self.assertTrue(args.assess)
+
+    def test_default_help_lists_only_simple_commands(self):
+        import migrate
+        with patch('sys.stdout', new_callable=StringIO) as output, \
+                self.assertRaises(SystemExit) as exit_context:
+            migrate._parse_cli_args(self._get_parser(), ['--help'])
+
+        self.assertEqual(exit_context.exception.code, 0)
+        self.assertIn('8 simple commands', output.getvalue())
+        self.assertIn('deploy WORKBOOK WORKSPACE_ID', output.getvalue())
+        self.assertNotIn('--server-preserve-folders', output.getvalue())
+
+    def test_simple_command_help_does_not_require_arguments(self):
+        import migrate
+        with patch('sys.stdout', new_callable=StringIO) as output, \
+                self.assertRaises(SystemExit) as exit_context:
+            migrate._parse_cli_args(self._get_parser(), ['deploy', '--help'])
+
+        self.assertEqual(exit_context.exception.code, 0)
+        self.assertIn('deploy WORKBOOK WORKSPACE_ID', output.getvalue())
+
 
 # ── _run_single_migration helper tests ───────────────────────────────────────
 
 class TestSingleMigrationHelpers(unittest.TestCase):
     """Tests for helpers extracted from main()'s single-file pipeline."""
+
+    def test_fabric_twbx_data_is_extracted_into_fabric_project(self):
+        import migrate
+        args = argparse.Namespace(
+            tableau_file='Retail.twbx',
+            output_dir=None,
+            output_format='fabric',
+        )
+
+        with patch.object(migrate, '_process_twbx_post_generation') as process:
+            migrate._extract_twbx_data_files(args, 'Retail')
+
+        process.assert_called_once_with(
+            'Retail.twbx',
+            os.path.join('artifacts', 'fabric_projects', 'migrated', 'Retail'),
+            'Retail',
+        )
+
+    def test_fabric_generation_uses_package_imports(self):
+        import migrate
+        extracted = {'datasources': [{'name': 'Orders'}], 'dashboards': []}
+        generated = {
+            'project_path': os.path.join('out', 'FabricReport'),
+            'artifacts': {'semantic_model': {}},
+        }
+
+        with patch(
+                'powerbi_import.import_to_powerbi.PowerBIImporter._load_converted_objects',
+                return_value=extracted), patch(
+                'powerbi_import.fabric_project_generator.FabricProjectGenerator.generate_project',
+                return_value=generated) as generate, patch('os.path.exists', return_value=True):
+            success = migrate._run_fabric_generation(
+                report_name='FabricReport', output_dir='out'
+            )
+
+        self.assertTrue(success)
+        generate.assert_called_once_with(
+            project_name='FabricReport',
+            extracted_data=extracted,
+            calendar_start=None,
+            calendar_end=None,
+            culture=None,
+            languages=None,
+        )
+
+    def test_fabric_output_routes_deployment_to_fabric(self):
+        import migrate
+        args = argparse.Namespace(output_format='fabric')
+
+        with patch.object(migrate, '_run_deploy_to_fabric',
+                          return_value={'success': True}) as fabric_deploy, \
+                patch.object(migrate, '_run_deploy_to_pbi_service') as pbi_deploy:
+            result = migrate._run_generated_project_deployment(args, 'Sales')
+
+        self.assertEqual(result, {'success': True})
+        fabric_deploy.assert_called_once_with(args, 'Sales')
+        pbi_deploy.assert_not_called()
+
+    def test_pbip_output_keeps_power_bi_deployment(self):
+        import migrate
+        args = argparse.Namespace(output_format='pbip')
+
+        with patch.object(migrate, '_run_deploy_to_fabric') as fabric_deploy, \
+                patch.object(migrate, '_run_deploy_to_pbi_service',
+                             return_value='deployed') as pbi_deploy:
+            result = migrate._run_generated_project_deployment(args, 'Sales')
+
+        self.assertEqual(result, 'deployed')
+        pbi_deploy.assert_called_once_with(args, 'Sales')
+        fabric_deploy.assert_not_called()
+
+    def test_fabric_deploy_refresh_runs_physical_data_pipeline(self):
+        import migrate
+        args = argparse.Namespace(
+            deploy='workspace-1',
+            deploy_refresh=True,
+            output_dir='fabric-output',
+        )
+        deployer = MagicMock()
+        deployer.deploy_fabric_project.return_value = {
+            'success': True,
+            'preflight': {
+                'workspace_id': 'workspace-1',
+                'workspace_name': 'Migration Workspace',
+                'accessible_items': 3,
+            },
+            'artifacts': [],
+            'item_ids': {'DataPipeline': 'pipeline-physical'},
+        }
+        deployer.run_fabric_pipeline.return_value = {
+            'id': 'job-1',
+            'status': 'Completed',
+        }
+
+        with patch(
+                'powerbi_import.deploy.deployer.FabricDeployer',
+                return_value=deployer):
+            result = migrate._run_deploy_to_fabric(args, 'Sales')
+
+        deployer.deploy_fabric_project.assert_called_once_with(
+            workspace_id='workspace-1',
+            project_dir=os.path.join('fabric-output', 'Sales'),
+            project_name='Sales',
+        )
+        deployer.run_fabric_pipeline.assert_called_once_with(
+            'workspace-1', 'pipeline-physical')
+        self.assertEqual(result['pipeline_job']['status'], 'Completed')
+
+    def test_fabric_deployment_failure_fails_migration_summary(self):
+        import migrate
+
+        results = {
+            'extraction': True,
+            'generation': True,
+            'deployment': False,
+        }
+        with patch('sys.stdout', new_callable=StringIO):
+            success = migrate._print_migration_summary(
+                results, {'fidelity_score': 100}, migrate.datetime.now())
+
+        self.assertFalse(success)
+
+    def test_batch_workbook_fails_when_default_openability_gate_fails(self):
+        import migrate
+        with tempfile.TemporaryDirectory() as output_dir, \
+                patch('migrate.run_extraction', return_value=True), \
+                patch('migrate.run_generation', return_value=True), \
+                patch('migrate.run_migration_report', return_value={}), \
+                patch('migrate._fix_twb_data_folder'), \
+                patch('migrate._run_openability_gate', return_value=False) as gate:
+            result = migrate._migrate_single_workbook(
+                tableau_file='test.twb',
+                basename='test',
+                workbook_output_dir=output_dir,
+                display_name='test',
+                skip_extraction=False,
+                wb_prep=None,
+                wb_cal_start=None,
+                wb_cal_end=None,
+                wb_culture=None,
+            )
+
+        self.assertFalse(result['success'])
+        gate.assert_called_once_with(os.path.join(output_dir, 'test'))
+
+    def test_batch_workbook_can_explicitly_skip_openability_gate(self):
+        import migrate
+        with tempfile.TemporaryDirectory() as output_dir, \
+                patch('migrate.run_extraction', return_value=True), \
+                patch('migrate.run_generation', return_value=True), \
+                patch('migrate.run_migration_report', return_value={}), \
+                patch('migrate._fix_twb_data_folder'), \
+                patch('migrate._run_openability_gate') as gate:
+            result = migrate._migrate_single_workbook(
+                tableau_file='test.twb',
+                basename='test',
+                workbook_output_dir=output_dir,
+                display_name='test',
+                skip_extraction=False,
+                wb_prep=None,
+                wb_cal_start=None,
+                wb_cal_end=None,
+                wb_culture=None,
+                verify_open=False,
+            )
+
+        self.assertTrue(result['success'])
+        gate.assert_not_called()
 
     def test_print_single_migration_header(self):
         import migrate
