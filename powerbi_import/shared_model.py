@@ -1600,6 +1600,27 @@ def _merge_datasources(all_extracted: List[dict],
                                 existing_calc['_merge_action'] = 'deduplicated'
                                 break
 
+    # Safety fallback: avoid emitting an empty shared semantic model.
+    # If isolated-table filtering removed everything, re-include isolated
+    # tables so the shared model remains openable and usable.
+    if not merged_ds['tables'] and _isolated_set:
+        logger.warning(
+            "Shared merge produced 0 tables after isolated filtering; "
+            "re-including isolated tables as fallback."
+        )
+        for wb_name, extracted in zip(workbook_names, all_extracted):
+            for ds in extracted.get('datasources', []):
+                fps = build_table_fingerprints([ds])
+                for _raw_name, (fp, table, _conn) in fps.items():
+                    fp_hash = fp.fingerprint()
+                    if fp_hash in added_tables:
+                        continue
+                    merged_table = copy.deepcopy(table)
+                    merged_table['_source_workbooks'] = [wb_name]
+                    merged_table['_merge_action'] = 'fallback_included'
+                    added_tables[fp_hash] = merged_table
+                    merged_ds['tables'].append(merged_table)
+
     return merged_ds
 
 

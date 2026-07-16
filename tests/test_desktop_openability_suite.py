@@ -9,6 +9,7 @@ Run explicitly:
 """
 
 import glob
+import json
 import os
 import shutil
 import sys
@@ -116,6 +117,18 @@ class TestDesktopOpenabilitySuite(unittest.TestCase):
             self.assertIn('model_path', result)
             model_path = result.get('model_path')
             self.assertTrue(model_path and os.path.isdir(model_path))
+
+            # Quality guard: shared semantic model should not be empty.
+            manifest_path = os.path.join(os.path.dirname(model_path), 'merge_manifest.json')
+            self.assertTrue(os.path.isfile(manifest_path), 'merge_manifest.json not generated')
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                manifest = json.load(f)
+            table_count = manifest.get('artifact_counts', {}).get('tables', 0)
+            self.assertGreater(
+                table_count,
+                0,
+                f'Shared semantic model is empty (tables={table_count})',
+            )
 
             project_dir = os.path.dirname(model_path)
             report = check_openability(project_dir)
