@@ -253,7 +253,7 @@ The pipeline generates **5 Fabric artifacts** from a single Tableau workbook:
 | **Data Pipeline** | 3-stage orchestration: Dataflow → Notebook → Semantic Model refresh |
 
 ```bash
-# Generate the complete six-artifact Fabric chain
+# Generate the complete five-artifact Fabric chain
 python migrate.py fabric workbook.twbx
 
 # With custom output directory
@@ -300,6 +300,13 @@ merge scores, conflicts, and a merge recommendation. Portfolio-wide assessment a
 deployment of an existing bundle are documented as advanced compatibility workflows
 in [Enterprise Guide](docs/ENTERPRISE_GUIDE.md) and
 [Deployment Guide](docs/DEPLOYMENT_GUIDE.md).
+
+Reliability safeguards in shared-model mode:
+
+- Shared semantic model fallback prevents an empty merged model when isolated-table filtering would otherwise remove every table.
+- `--strict-merge` blocks generation on merge validation failures.
+- `--strict-thin-report` blocks output when thin-report orphaned references exceed the allowed threshold.
+- `--thin-report-max-orphans N` defines that threshold (default: `0`).
 
 ![Global Assessment — Cross-Workbook Merge Analysis](docs/images/share_assessment.png)
 ### 📋 Tableau Prep Flow Migration
@@ -672,6 +679,8 @@ TableauToPowerBI/
 | `--assess-merge` | Only assess merge feasibility |
 | `--force-merge` | Force merge even if score is below threshold |
 | `--strict-merge` | Block generation on merge validation failures |
+| `--strict-thin-report` | Block generation when thin-report orphaned references exceed the allowed threshold |
+| `--thin-report-max-orphans N` | Maximum orphaned thin-report field references allowed when strict thin-report is enabled (default: `0`) |
 | `--merge-preview` | Preview merge results without generating output |
 | `--global-assess` | Cross-workbook pairwise merge scoring and clustering |
 | **Deploy** | |
@@ -793,6 +802,8 @@ The validator checks `.pbip` JSON, `report.json`, `model.tmdl`, page/visual stru
 python -m pytest tests/ -v                          # Run all tests
 python -m pytest tests/test_dax_converter.py -v      # Run specific file
 python -m pytest tests/ --cov --cov-report=html      # Coverage report
+RUN_OPENABILITY_SUITE=1 python -m pytest tests/test_desktop_openability_suite.py -v  # Fixture-based Desktop openability suite
+python -m pytest tests/test_openability.py -v         # Static PBIP openability checks
 ```
 
 <details>
