@@ -2948,6 +2948,27 @@ def _add_shared_model_args(parser):
     )
 
     parser.add_argument(
+        '--strict-thin-report',
+        action='store_true',
+        default=False,
+        help=(
+            'Strict thin-report validation: block shared-model generation if '
+            'orphaned thin-report field references exceed '
+            '--thin-report-max-orphans.'
+        )
+    )
+
+    parser.add_argument(
+        '--thin-report-max-orphans',
+        type=int,
+        default=0,
+        help=(
+            'Maximum allowed orphaned thin-report field references when '
+            '--strict-thin-report is enabled (default: 0).'
+        )
+    )
+
+    parser.add_argument(
         '--add-to-model',
         nargs=2,
         metavar=('DIR', 'WORKBOOK'),
@@ -4406,7 +4427,9 @@ def run_shared_model_migration(workbook_paths, model_name=None, output_dir=None,
                                culture=None, model_mode='import',
                                languages=None, merge_config_path=None,
                                save_config=False, strict_merge=False,
-                               output_format='pbip', verify_open=True):
+                               output_format='pbip', verify_open=True,
+                               strict_thin_report=False,
+                               thin_report_max_orphans=0):
     """Orchestrate shared semantic model migration for multiple workbooks.
 
     Steps:
@@ -4509,6 +4532,8 @@ def run_shared_model_migration(workbook_paths, model_name=None, output_dir=None,
                 strict_merge=strict_merge,
                 workbook_paths=workbook_paths,
                 output_format=output_format,
+                strict_thin_report=strict_thin_report,
+                thin_report_max_orphans=thin_report_max_orphans,
             )
 
             if result.get('model_path'):
@@ -5152,6 +5177,8 @@ def main():
             strict_merge=getattr(args, 'strict_merge', False),
             output_format=getattr(args, 'output_format', 'pbip'),
             verify_open=getattr(args, 'verify_open', True),
+            strict_thin_report=getattr(args, 'strict_thin_report', False),
+            thin_report_max_orphans=getattr(args, 'thin_report_max_orphans', 0),
         )
 
         # Auto-deploy bundle if --deploy-bundle is given alongside --shared-model

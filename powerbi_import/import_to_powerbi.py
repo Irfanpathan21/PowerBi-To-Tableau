@@ -215,7 +215,9 @@ class PowerBIImporter:
                             languages=None, force_merge=False,
                             merge_config_path=None, save_config=False,
                             strict_merge=False, workbook_paths=None,
-                            output_format='pbip'):
+                            output_format='pbip',
+                            strict_thin_report=False,
+                            thin_report_max_orphans=0):
         """Generate a shared semantic model + thin reports.
 
         Args:
@@ -233,6 +235,10 @@ class PowerBIImporter:
             save_config: Save merge decisions to config file.
             output_format: Output format — 'pbip' (default) or 'fabric'
                 (Lakehouse + Dataflow Gen2 + Notebook + DirectLake SemanticModel + Pipeline).
+            strict_thin_report: Block generation if thin-report orphaned fields exceed
+                the configured threshold.
+            thin_report_max_orphans: Maximum allowed orphaned field references across
+                all generated thin reports when strict_thin_report is enabled.
 
         Returns:
             dict with 'assessment', 'model_path', 'report_paths', plus new fields.
@@ -423,6 +429,7 @@ class PowerBIImporter:
         print(f"\n  Step 4: Generating {len(workbook_names)} thin reports...")
         report_paths = []
         validation_issues = []
+        orphaned_issue_count = 0
 
         thin_gen = ThinReportGenerator(model_name, thin_report_dir)
 
@@ -436,6 +443,7 @@ class PowerBIImporter:
             issues = validate_thin_report_fields(wb_data, merged, field_mapping)
             if issues:
                 validation_issues.extend(issues)
+                orphaned_issue_count += len(issues)
                 for issue in issues[:3]:
                     print(f"    [WARN] {wb_name}: orphaned field '{issue['field']}' in {issue['location']}")
 
@@ -444,6 +452,28 @@ class PowerBIImporter:
             )
             report_paths.append(report_path)
             print(f"    [OK] Thin report: {wb_name}")
+
+        if strict_thin_report and orphaned_issue_count > thin_report_max_orphans:
+            print("\n  ✗ Strict thin-report validation FAILED.")
+            print(
+                f"    Orphaned references: {orphaned_issue_count} "
+                f"(max allowed: {thin_report_max_orphans})"
+            )
+            print("    Remove --strict-thin-report or raise --thin-report-max-orphans.")
+            return {
+                'assessment': assessment,
+                'model_path': None,
+                'report_paths': [],
+                'validation_issues': validation_issues,
+                'validation': validation,
+                'risk_analysis': risk_analysis,
+                'rls_consolidations': rls_consolidations,
+                'lineage': lineage,
+                'navigation': nav_configs,
+                'strict_thin_report_failed': True,
+                'orphaned_issue_count': orphaned_issue_count,
+                'thin_report_max_orphans': thin_report_max_orphans,
+            }
 
         # 6. Save artifacts (assessment, config, lineage, HTML report)
         self._save_shared_model_artifacts(
@@ -479,6 +509,8 @@ class PowerBIImporter:
             'lineage': lineage,
             'navigation': nav_configs,
             'manifest': manifest,
+            'orphaned_issue_count': orphaned_issue_count,
+            'thin_report_max_orphans': thin_report_max_orphans,
         }
 
     def _create_model_explorer_report(self, project_dir, model_name):

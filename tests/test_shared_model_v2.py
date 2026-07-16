@@ -734,6 +734,59 @@ class TestImportSharedModelEnhanced(unittest.TestCase):
         lineage_path = os.path.join(tmpdir, 'LinTest', 'column_lineage.json')
         self.assertTrue(os.path.isfile(lineage_path))
 
+    def test_strict_thin_report_fails_on_orphans(self):
+        from powerbi_import.import_to_powerbi import PowerBIImporter
+
+        all_extracted, names = _two_workbooks_with_conflict()
+        # Force orphaned field in thin-report validation.
+        all_extracted[0].setdefault('worksheets', []).append({
+            'name': 'OrphanSheet',
+            'columns': [{'name': 'DefinitelyMissingField'}],
+            'filters': [],
+            'mark_encoding': {},
+        })
+
+        importer = PowerBIImporter()
+        tmpdir = tempfile.mkdtemp()
+        result = importer.import_shared_model(
+            model_name='StrictThinFail',
+            all_converted_objects=all_extracted,
+            workbook_names=names,
+            output_dir=tmpdir,
+            force_merge=True,
+            strict_thin_report=True,
+            thin_report_max_orphans=0,
+        )
+        self.assertTrue(result.get('strict_thin_report_failed'))
+        self.assertIsNone(result.get('model_path'))
+        self.assertGreater(result.get('orphaned_issue_count', 0), 0)
+
+    def test_strict_thin_report_passes_with_threshold(self):
+        from powerbi_import.import_to_powerbi import PowerBIImporter
+
+        all_extracted, names = _two_workbooks_with_conflict()
+        # Same synthetic orphan but threshold allows it.
+        all_extracted[0].setdefault('worksheets', []).append({
+            'name': 'OrphanSheet',
+            'columns': [{'name': 'DefinitelyMissingField'}],
+            'filters': [],
+            'mark_encoding': {},
+        })
+
+        importer = PowerBIImporter()
+        tmpdir = tempfile.mkdtemp()
+        result = importer.import_shared_model(
+            model_name='StrictThinPass',
+            all_converted_objects=all_extracted,
+            workbook_names=names,
+            output_dir=tmpdir,
+            force_merge=True,
+            strict_thin_report=True,
+            thin_report_max_orphans=10,
+        )
+        self.assertFalse(result.get('strict_thin_report_failed', False))
+        self.assertIsNotNone(result.get('model_path'))
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Table Isolation Detection Tests
@@ -805,8 +858,8 @@ class TestTableIsolationDetection(unittest.TestCase):
         linked_tables = assessment.linked_unique_tables.get('WB_B', [])
         self.assertIn('[dbo].[Customers]', linked_tables)
 
-    def test_isolated_tables_excluded_from_merge(self):
-        """Isolated tables should not appear in the merged model."""
+    def test_isolated_tables_reincluded_when_model_would_be_empty(self):
+        """If isolation removes everything, fallback re-includes tables."""
         wb_a = _make_wb([_make_datasource(
             'DS_A', 'sqlserver', 'srv1', 'db1',
             tables=[_make_table('[dbo].[Orders]', ['OrderID', 'Amount'])],
@@ -817,9 +870,10 @@ class TestTableIsolationDetection(unittest.TestCase):
         )])
         assessment = assess_merge([wb_a, wb_b], ['WB_A', 'WB_B'])
         merged = merge_semantic_models([wb_a, wb_b], assessment, 'Test')
-        # Only non-isolated tables should be in merged model
+        # Fallback keeps shared model non-empty by re-including isolated tables.
         merged_table_names = [t['name'] for t in merged['datasources'][0]['tables']]
-        self.assertNotIn('widgets', merged_table_names)
+        self.assertIn('[dbo].[Orders]', merged_table_names)
+        self.assertIn('widgets', merged_table_names)
 
     def test_assessment_has_both_fields(self):
         """MergeAssessment should always have linked_unique and isolated dicts."""
