@@ -172,6 +172,14 @@ With the same probe protocol, `Complex_Enterprise.twb` PBIP median improved
 to 0.827 s (about 32% faster vs the prior 1.221 s probe), while extraction
 and performance regression suites remained fully passing (222 tests).
 
+The third 223.1 increment adds a normalized semantic-equivalence guard in
+`tests/test_extraction.py`: the extractor now runs twice on the same workbook
+and compares all 23 JSON outputs after recursive normalization (sorted dict/list
+structures, volatile timestamp/run keys removed). This protects optimization work
+from ordering-only or metadata-only drift while preserving strict semantic parity.
+Targeted extraction suites remain green (164 tests), and a new probe baseline on
+`Complex_Enterprise.twb` reports PBIP median 1.319 s (3 measured runs, 1 warm-up).
+
 ## 5. Sprint 224: True Direct Lake and Cross-Artifact Contract
 
 **Owners:** @generator, @semantic, @wiring, @tester

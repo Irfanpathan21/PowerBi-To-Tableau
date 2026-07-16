@@ -1,0 +1,231 @@
+{
+  "schema_version": 3,
+  "created_at": "2026-07-16T05:31:40.219156+00:00",
+  "workbook": "C:\\GitHub Project\\TableauToPowerBI\\examples\\tableau_samples\\Complex_Enterprise.twb",
+  "workbook_size_bytes": 63954,
+  "output_format": "pbip",
+  "runs": 3,
+  "warmup_runs": 1,
+  "memory_runs": 1,
+  "timing_traced": false,
+  "environment": {
+    "python": "3.14.2",
+    "implementation": "CPython",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 26 Model 96 Stepping 0, AuthenticAMD"
+  },
+  "measurements": [
+    {
+      "extraction_seconds": 0.07171560000278987,
+      "generation_seconds": 1.2392603000043891,
+      "total_seconds": 1.310975900007179,
+      "generation_phase_timings": {
+        "total_seconds": 1.2385031000012532,
+        "measured_seconds": 1.2373076000076253,
+        "coverage_percent": 99.90347218399157,
+        "phases": {
+          "input_loading": 0.1622571999905631,
+          "fidelity_preprocess": 0.015863100008573383,
+          "project_manifest": 0.0037219999940134585,
+          "semantic_model": 0.08451610000338405,
+          "report": 0.7558753000048455,
+          "metadata": 0.2058342999953311,
+          "automation_artifacts": 0.005405699979746714,
+          "equivalence_validation": 0.002941900020232424,
+          "import_orchestration": 0.0008920000109355897,
+          "output_validation": 0.00034940001205541193
+        }
+      }
+    },
+    {
+      "extraction_seconds": 0.08456320001278073,
+      "generation_seconds": 1.237180800002534,
+      "total_seconds": 1.3217440000153147,
+      "generation_phase_timings": {
+        "total_seconds": 1.2356239999935497,
+        "measured_seconds": 1.2343330000294372,
+        "coverage_percent": 99.89551838066279,
+        "phases": {
+          "input_loading": 0.15022949999547563,
+          "fidelity_preprocess": 0.01869940001051873,
+          "project_manifest": 0.003352600004291162,
+          "semantic_model": 0.0970202999887988,
+          "report": 0.7438827000150923,
+          "metadata": 0.2124242999998387,
+          "automation_artifacts": 0.004672600014600903,
+          "equivalence_validation": 0.003288600011728704,
+          "import_orchestration": 0.00076299998909235,
+          "output_validation": 0.0011093999783042818
+        }
+      }
+    },
+    {
+      "extraction_seconds": 0.0777028999873437,
+      "generation_seconds": 1.241488700004993,
+      "total_seconds": 1.3191915999923367,
+      "generation_phase_timings": {
+        "total_seconds": 1.2406795999850146,
+        "measured_seconds": 1.239232499996433,
+        "coverage_percent": 99.8833623129937,
+        "phases": {
+          "input_loading": 0.14854690001811832,
+          "fidelity_preprocess": 0.01853339999797754,
+          "project_manifest": 0.003958800021791831,
+          "semantic_model": 0.09427669999422505,
+          "report": 0.736227500019595,
+          "metadata": 0.2271236999949906,
+          "automation_artifacts": 0.005944599979557097,
+          "equivalence_validation": 0.0038044000102672726,
+          "import_orchestration": 0.0008164999599102885,
+          "output_validation": 0.00035909999860450625
+        }
+      }
+    }
+  ],
+  "memory_measurement": {
+    "extraction_peak_mb": 0.9938745498657227,
+    "generation_peak_mb": 0.7711572647094727,
+    "peak_mb": 0.9938745498657227
+  },
+  "summary": {
+    "extraction_seconds": {
+      "min": 0.07171560000278987,
+      "median": 0.0777028999873437,
+      "mean": 0.07799390000097144,
+      "p95": 0.08387717001023702,
+      "max": 0.08456320001278073,
+      "variation_percent": 16.47257030335813
+    },
+    "generation_seconds": {
+      "min": 1.237180800002534,
+      "median": 1.2392603000043891,
+      "mean": 1.2393099333373054,
+      "p95": 1.2412658600049327,
+      "max": 1.241488700004993,
+      "variation_percent": 0.347604734423328
+    },
+    "total_seconds": {
+      "min": 1.310975900007179,
+      "median": 1.3191915999923367,
+      "mean": 1.3173038333382767,
+      "p95": 1.321488760013017,
+      "max": 1.3217440000153147,
+      "variation_percent": 0.8174348040001846
+    },
+    "extraction_peak_mb": {
+      "min": 0.9938745498657227,
+      "median": 0.9938745498657227,
+      "mean": 0.9938745498657227,
+      "p95": 0.9938745498657227,
+      "max": 0.9938745498657227,
+      "variation_percent": 0.0
+    },
+    "generation_peak_mb": {
+      "min": 0.7711572647094727,
+      "median": 0.7711572647094727,
+      "mean": 0.7711572647094727,
+      "p95": 0.7711572647094727,
+      "max": 0.7711572647094727,
+      "variation_percent": 0.0
+    },
+    "peak_mb": {
+      "min": 0.9938745498657227,
+      "median": 0.9938745498657227,
+      "mean": 0.9938745498657227,
+      "p95": 0.9938745498657227,
+      "max": 0.9938745498657227,
+      "variation_percent": 0.0
+    },
+    "generation_phases": {
+      "automation_artifacts": {
+        "min": 0.004672600014600903,
+        "median": 0.005405699979746714,
+        "mean": 0.005340966657968238,
+        "p95": 0.005890709979576058,
+        "max": 0.005944599979557097,
+        "variation_percent": 23.815912856495473
+      },
+      "equivalence_validation": {
+        "min": 0.002941900020232424,
+        "median": 0.003288600011728704,
+        "mean": 0.0033449666807428002,
+        "p95": 0.003752820010413416,
+        "max": 0.0038044000102672726,
+        "variation_percent": 25.78500990758202
+      },
+      "fidelity_preprocess": {
+        "min": 0.015863100008573383,
+        "median": 0.01853339999797754,
+        "mean": 0.017698633339023218,
+        "p95": 0.01868280000926461,
+        "max": 0.01869940001051873,
+        "variation_percent": 16.025531167379285
+      },
+      "import_orchestration": {
+        "min": 0.00076299998909235,
+        "median": 0.0008164999599102885,
+        "mean": 0.0008238333199794093,
+        "p95": 0.0008844500058330596,
+        "max": 0.0008920000109355897,
+        "variation_percent": 15.658509884798525
+      },
+      "input_loading": {
+        "min": 0.14854690001811832,
+        "median": 0.15022949999547563,
+        "mean": 0.15367786666805236,
+        "p95": 0.16105442999105435,
+        "max": 0.1622571999905631,
+        "variation_percent": 8.921453863007695
+      },
+      "metadata": {
+        "min": 0.2058342999953311,
+        "median": 0.2124242999998387,
+        "mean": 0.21512743333005346,
+        "p95": 0.2256537599954754,
+        "max": 0.2271236999949906,
+        "variation_percent": 9.896180914777531
+      },
+      "output_validation": {
+        "min": 0.00034940001205541193,
+        "median": 0.00035909999860450625,
+        "mean": 0.0006059666629880667,
+        "p95": 0.0010343699803343042,
+        "max": 0.0011093999783042818,
+        "variation_percent": 125.41943520477736
+      },
+      "project_manifest": {
+        "min": 0.003352600004291162,
+        "median": 0.0037219999940134585,
+        "mean": 0.003677800006698817,
+        "p95": 0.003935120019013994,
+        "max": 0.003958800021791831,
+        "variation_percent": 16.4826803087858
+      },
+      "report": {
+        "min": 0.736227500019595,
+        "median": 0.7438827000150923,
+        "mean": 0.7453285000131776,
+        "p95": 0.7546760400058702,
+        "max": 0.7558753000048455,
+        "variation_percent": 2.6361262161453745
+      },
+      "semantic_model": {
+        "min": 0.08451610000338405,
+        "median": 0.09427669999422505,
+        "mean": 0.0919376999954693,
+        "p95": 0.09674593998934142,
+        "max": 0.0970202999887988,
+        "variation_percent": 13.600731784709593
+      }
+    },
+    "generation_phase_coverage_percent": {
+      "min": 99.84719152015256,
+      "median": 99.85948698890341,
+      "mean": 99.85910098216546,
+      "p95": 99.8695106925867,
+      "max": 99.8706244374404,
+      "variation_percent": 0.023465980624059243
+    }
+  },
+  "stable": true
+}

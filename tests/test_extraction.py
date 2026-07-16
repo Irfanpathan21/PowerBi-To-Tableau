@@ -12,6 +12,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from copy import deepcopy
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -100,8 +101,73 @@ class TestFullExtraction(unittest.TestCase):
         with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
+    @staticmethod
+    def _normalize_json(value):
+        """Normalize nested JSON structures for stable semantic comparison.
+
+        - dict keys sorted recursively
+        - list entries normalized and sorted by JSON representation
+        - volatile extraction metadata removed
+        """
+        volatile_keys = {'extracted_at', 'timestamp', 'generated_at', 'run_id'}
+        if isinstance(value, dict):
+            normalized = {}
+            for key in sorted(value.keys()):
+                if key in volatile_keys:
+                    continue
+                normalized[key] = TestFullExtraction._normalize_json(value[key])
+            return normalized
+        if isinstance(value, list):
+            normalized_items = [TestFullExtraction._normalize_json(item) for item in value]
+            return sorted(normalized_items, key=lambda item: json.dumps(item, sort_keys=True, ensure_ascii=False))
+        return value
+
     def test_extraction_succeeds(self):
         self.assertTrue(self.success)
+
+    def test_extraction_outputs_semantically_stable_across_runs(self):
+        """Two extraction runs on the same workbook should be semantically equivalent.
+
+        This protects optimization work from introducing behavioral drift while
+        allowing ordering/timestamp differences.
+        """
+        tmpdir_2 = tempfile.mkdtemp()
+        try:
+            ext2 = TableauExtractor(SAMPLE_TWB, output_dir=tmpdir_2)
+            _old = sys.stdout
+            sys.stdout = io.TextIOWrapper(io.BytesIO(), encoding='utf-8')
+            try:
+                success2 = ext2.extract_all()
+            finally:
+                sys.stdout = _old
+            self.assertTrue(success2)
+
+            expected_files = [
+                'datasources.json', 'worksheets.json', 'dashboards.json',
+                'calculations.json', 'parameters.json', 'filters.json',
+                'stories.json', 'actions.json', 'sets.json', 'groups.json',
+                'bins.json', 'hierarchies.json', 'sort_orders.json',
+                'aliases.json', 'custom_sql.json', 'user_filters.json',
+                'datasource_filters.json', 'custom_geocoding.json',
+                'published_datasources.json', 'data_blending.json',
+                'hyper_files.json', 'table_extensions.json',
+                'linguistic_schema.json',
+            ]
+
+            for fname in expected_files:
+                p1 = os.path.join(self.tmpdir, fname)
+                p2 = os.path.join(tmpdir_2, fname)
+                self.assertTrue(os.path.exists(p1), f'Missing file from run1: {fname}')
+                self.assertTrue(os.path.exists(p2), f'Missing file from run2: {fname}')
+                with open(p1, 'r', encoding='utf-8') as f1:
+                    d1 = json.load(f1)
+                with open(p2, 'r', encoding='utf-8') as f2:
+                    d2 = json.load(f2)
+                n1 = self._normalize_json(deepcopy(d1))
+                n2 = self._normalize_json(deepcopy(d2))
+                self.assertEqual(n1, n2, f'Semantic mismatch in {fname}')
+        finally:
+            shutil.rmtree(tmpdir_2)
 
     # ─── Core objects ──────────────────────────────────────
 
