@@ -230,11 +230,119 @@ def _check_references(project_dir) -> CheckResult:
             target = os.path.normpath(os.path.join(os.path.dirname(pbir), by_path))
             if not os.path.isdir(target):
                 issues.append(f"{os.path.relpath(pbir, project_dir)}: datasetReference "
-                              f"byPath '{by_path}' does not resolve to a folder")
+                              f"byPath '{by_path}' does not resolve to a folder. "
+                              f"Fix: point byPath to the generated *.SemanticModel folder.")
         elif "byConnection" not in ref:
             issues.append(f"{os.path.relpath(pbir, project_dir)}: no datasetReference "
-                          f"(byPath or byConnection)")
+                          f"(byPath or byConnection). Fix: add a valid datasetReference block.")
     return CheckResult("references", not issues, "error", issues)
+
+
+def _check_report_structure(project_dir) -> CheckResult:
+    """Verify essential report files/pages/visual files exist and are complete."""
+    issues = []
+    report_dirs = glob.glob(os.path.join(project_dir, "**", "*.Report"), recursive=True)
+    for report_dir in report_dirs:
+        pbir = os.path.join(report_dir, "definition.pbir")
+        report_json = os.path.join(report_dir, "report.json")
+        if not os.path.isfile(pbir):
+            issues.append(
+                f"{os.path.relpath(report_dir, project_dir)}: missing definition.pbir. "
+                f"Fix: regenerate report metadata or restore definition.pbir."
+            )
+        if not os.path.isfile(report_json):
+            issues.append(
+                f"{os.path.relpath(report_dir, project_dir)}: missing report.json. "
+                f"Fix: regenerate report shell so Desktop can load report metadata."
+            )
+
+        pages_root = os.path.join(report_dir, "definition", "pages")
+        page_dirs = [p for p in glob.glob(os.path.join(pages_root, "*")) if os.path.isdir(p)]
+        if not page_dirs:
+            issues.append(
+                f"{os.path.relpath(report_dir, project_dir)}: no page folder under definition/pages. "
+                f"Fix: generate at least one page with page.json and visuals."
+            )
+            continue
+
+        for page_dir in page_dirs:
+            page_json = os.path.join(page_dir, "page.json")
+            if not os.path.isfile(page_json):
+                issues.append(
+                    f"{os.path.relpath(page_dir, project_dir)}: missing page.json. "
+                    f"Fix: recreate page metadata for this page folder."
+                )
+            visuals_root = os.path.join(page_dir, "visuals")
+            visual_dirs = [v for v in glob.glob(os.path.join(visuals_root, "*")) if os.path.isdir(v)]
+            for visual_dir in visual_dirs:
+                visual_json = os.path.join(visual_dir, "visual.json")
+                if not os.path.isfile(visual_json):
+                    issues.append(
+                        f"{os.path.relpath(visual_dir, project_dir)}: missing visual.json. "
+                        f"Fix: recreate the visual container metadata."
+                    )
+
+    return CheckResult("report_structure", not issues, "error", issues)
+
+
+def _check_tmdl_partitions(project_dir) -> CheckResult:
+    """Validate table/partition integrity in TMDL files (common Desktop load breaker)."""
+    issues = []
+    for tmdl in _tmdl_files(project_dir):
+        try:
+            lines = _read(tmdl).splitlines()
+        except OSError:
+            continue
+
+        table_has_partition = False
+        current_partition = None
+        current_partition_type = ""
+        saw_source = False
+        saw_m_body = False
+
+        for raw in lines:
+            line = raw.strip()
+            if raw.startswith("table "):
+                if current_partition and current_partition_type == "m" and (not saw_source or not saw_m_body):
+                    issues.append(
+                        f"{os.path.relpath(tmdl, project_dir)}: partition '{current_partition}' has incomplete M source. "
+                        f"Fix: ensure `source =` exists and contains a non-empty M query body."
+                    )
+                current_partition = None
+                current_partition_type = ""
+                saw_source = False
+                saw_m_body = False
+            pm = _PARTITION_RE.match(raw)
+            if pm:
+                table_has_partition = True
+                if current_partition and current_partition_type == "m" and (not saw_source or not saw_m_body):
+                    issues.append(
+                        f"{os.path.relpath(tmdl, project_dir)}: partition '{current_partition}' has incomplete M source. "
+                        f"Fix: ensure `source =` exists and contains a non-empty M query body."
+                    )
+                current_partition = pm.group(1).strip().strip("'")
+                current_partition_type = pm.group(2)
+                saw_source = False
+                saw_m_body = False
+                continue
+            if current_partition and current_partition_type == "m":
+                if _SOURCE_RE.match(raw):
+                    saw_source = True
+                    continue
+                if raw.startswith("\t\t\t\t") and raw.strip():
+                    saw_m_body = True
+
+        if current_partition and current_partition_type == "m" and (not saw_source or not saw_m_body):
+            issues.append(
+                f"{os.path.relpath(tmdl, project_dir)}: partition '{current_partition}' has incomplete M source. "
+                f"Fix: ensure `source =` exists and contains a non-empty M query body."
+            )
+        if not table_has_partition and os.path.basename(tmdl).lower() != "model.tmdl":
+            issues.append(
+                f"{os.path.relpath(tmdl, project_dir)}: no partition found. "
+                f"Fix: add at least one partition per table (m or calculated)."
+            )
+    return CheckResult("tmdl_partitions", not issues, "error", issues)
 
 
 def check_openability(project_dir: str) -> OpenabilityReport:
@@ -248,9 +356,11 @@ def check_openability(project_dir: str) -> OpenabilityReport:
         _check_structure(project_dir),
         _check_json_parse(project_dir),
         _check_tmdl_present(project_dir),
+        _check_tmdl_partitions(project_dir),
         _check_power_query(project_dir),
         _check_dax(project_dir),
         _check_references(project_dir),
+        _check_report_structure(project_dir),
         _check_schema(project_dir),
     ]
     return report

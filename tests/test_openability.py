@@ -33,13 +33,20 @@ def _write_project(root, tmdl_text=None, visual=None, add_pbir=True):
             f.write(tmdl_text)
     rep = os.path.join(root, "P.Report", "definition")
     os.makedirs(rep, exist_ok=True)
+    with open(os.path.join(root, "P.Report", "report.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"$schema": "x", "config": {}}, f)
     if add_pbir:
         with open(os.path.join(root, "P.Report", "definition.pbir"), "w",
                   encoding="utf-8") as f:
             json.dump({"version": "4.0", "datasetReference": {
                 "byPath": {"path": "../P.SemanticModel"}}}, f)
     if visual is not None:
-        vdir = os.path.join(rep, "pages", "p1", "visuals", "v1")
+        pdir = os.path.join(rep, "pages", "p1")
+        os.makedirs(pdir, exist_ok=True)
+        with open(os.path.join(pdir, "page.json"), "w", encoding="utf-8") as f:
+            json.dump({"$schema": "x", "name": "p1", "displayName": "P1"}, f)
+        vdir = os.path.join(pdir, "visuals", "v1")
         os.makedirs(vdir, exist_ok=True)
         with open(os.path.join(vdir, "visual.json"), "w", encoding="utf-8") as f:
             json.dump(visual, f)
@@ -155,14 +162,15 @@ class TestOpenability(unittest.TestCase):
             for key in ("project_dir", "openable", "blocking_count",
                         "warning_count", "blocking_issues", "warnings", "checks"):
                 self.assertIn(key, data)
-            self.assertEqual(len(data["checks"]), 7)
+            self.assertEqual(len(data["checks"]), 9)
 
     def test_check_names_present(self):
         with tempfile.TemporaryDirectory() as d:
             _write_project(d, _tmdl_with_m(["let x=1 in x"]))
             names = {c.name for c in check_openability(d).checks}
             self.assertEqual(names, {"structure", "json_parse", "tmdl_present",
-                                     "power_query", "dax", "references", "schema"})
+                                     "tmdl_partitions", "power_query", "dax",
+                                     "references", "report_structure", "schema"})
 
     def test_no_tmdl_blocks(self):
         with tempfile.TemporaryDirectory() as d:
@@ -202,6 +210,54 @@ class TestOpenability(unittest.TestCase):
             r = check_openability(d)
             refs = [c for c in r.checks if c.name == "references"][0]
             self.assertTrue(refs.ok, refs.issues)
+
+    def test_missing_report_json_blocks(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_project(d, _tmdl_with_m(["let x=1 in x"]))
+            report_json = os.path.join(d, "P.Report", "report.json")
+            if os.path.exists(report_json):
+                os.remove(report_json)
+            r = check_openability(d)
+            self.assertFalse(r.openable)
+            self.assertTrue(any("report_structure" in b for b in r.blocking_issues))
+
+    def test_missing_page_json_blocks(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_project(
+                d,
+                _tmdl_with_m(["let x=1 in x"]),
+                visual={"$schema": "x", "name": "v1", "visual": {}},
+            )
+            page_json = os.path.join(
+                d, "P.Report", "definition", "pages", "p1", "page.json")
+            with open(page_json, "w", encoding="utf-8") as f:
+                json.dump({"name": "p1", "displayName": "P1"}, f)
+            os.remove(page_json)
+            r = check_openability(d)
+            self.assertFalse(r.openable)
+            self.assertTrue(any("report_structure" in b for b in r.blocking_issues))
+
+    def test_table_without_partition_blocks(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmdl = "table 'Sales'\n\tcolumn A\n\t\tdataType: string\n"
+            _write_project(d, tmdl)
+            r = check_openability(d)
+            self.assertFalse(r.openable)
+            self.assertTrue(any("tmdl_partitions" in b for b in r.blocking_issues))
+
+    def test_m_partition_without_source_blocks(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmdl = (
+                "table 'Sales'\n"
+                "\tcolumn A\n"
+                "\t\tdataType: string\n"
+                "\tpartition 'Sales-guid' = m\n"
+                "\t\tmode: import\n"
+            )
+            _write_project(d, tmdl)
+            r = check_openability(d)
+            self.assertFalse(r.openable)
+            self.assertTrue(any("tmdl_partitions" in b for b in r.blocking_issues))
 
 
 class TestCheckResult(unittest.TestCase):
