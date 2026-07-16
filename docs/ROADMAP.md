@@ -1,8 +1,8 @@
-# Development Roadmap — v22.0.0 → v45.0.0
+# Development Roadmap — v22.0.0 → v46.0.0
 
-**Date:** 2026-07-15
+**Date:** 2026-07-16
 **Baseline:** v40.0.0 — 9,156 tests (Python) + 38 extension unit tests, 0 collection errors
-**Current state:** v44.0.0 shipped. A 2026-07-15 executable audit confirmed that the Fabric-native path generates a useful five-artifact scaffold, but is not yet an operational end-to-end Direct Lake solution: semantic-model partitions are Import/M, Dataflow and pipeline bindings are unresolved, three item manifests are missing, and single-workbook Fabric output has no Power BI report. **Next focus (v45.0.0): measured migration performance and completion of the Fabric contract.**
+**Current state:** v44.0.0 shipped. A 2026-07-15 executable audit confirmed that the Fabric-native path generates a useful five-artifact scaffold, but is not yet an operational end-to-end Direct Lake solution: semantic-model partitions are Import/M, Dataflow and pipeline bindings are unresolved, three item manifests are missing, and single-workbook Fabric output has no Power BI report. **Near-term focus (v45.0.0): measured migration performance and completion of the Fabric contract. Next roadmap (v46.0.0): Desktop openability hardening, shared-model quality gates, and release discipline.**
 
 ---
 
@@ -40,6 +40,7 @@ The migration engine has broad PBIP, batch, shared-model, Tableau Server, self-h
 | **v43.0.0** | Self-Healing Maturity & Functionality Parity | 209–214 | 🎯 Next |
 | **v44.0.0** | Agentic & Copilot-Native Migration | 215–220 | ✅ Shipped |
 | **v45.0.0** | Performance & Fabric Contract Completion | 222–226 | Planned |
+| **v46.0.0** | Desktop Reliability & Release Discipline | 227–231 | Planned |
 
 ---
 
@@ -71,6 +72,69 @@ v45 sequencing:
 Until the Sprint 226 gates pass, documentation and CLI output must describe
 `--output-format fabric` as **Fabric scaffold / preview**, not as a complete
 production-ready Direct Lake migration.
+
+---
+
+## v46.0.0 — Desktop Reliability & Release Discipline (Sprints 227–231)
+
+v46 converts recent quality hardening into a repeatable, release-grade contract:
+
+- openability checks become explicit release gates,
+- shared-model generation must remain non-empty and thin-report-safe,
+- README/docs/CLI/test suites stay synchronized,
+- push/CI workflow avoids local git-maintenance prompt failures.
+
+### Sprint 227 — Openability Gate Consolidation
+
+**Goal:** Make static Desktop-openability preflight a first-class release gate.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 227.1 | Canonical openability contract | @orchestrator | `powerbi_import/openability.py`, `docs/ARCHITECTURE.md` | Medium | Freeze the set of blocking checks (JSON, PBIR paths, TMDL, DAX/M partition validity, report/model references). |
+| 227.2 | Fixture suite stabilization | @tester | `tests/test_desktop_openability_suite.py` | Medium | Keep real-fixture coverage deterministic and clearly env-gated (`RUN_OPENABILITY_SUITE=1`). |
+| 227.3 | CI gate wiring | @tester | `.github/workflows/ci.yml` | Low | Ensure openability suite can run in a dedicated quality stage with explicit pass/fail semantics. |
+
+### Sprint 228 — Shared Model Safety Nets
+
+**Goal:** Prevent technically-openable but operationally-useless shared-model outputs.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 228.1 | Non-empty merged model guarantee | @merger | `powerbi_import/shared_model.py` | Medium | Preserve fallback behavior when isolated filtering would result in zero tables. |
+| 228.2 | Thin-report orphan thresholds | @orchestrator | `migrate.py`, `powerbi_import/import_to_powerbi.py` | Medium | Enforce `--strict-thin-report` + `--thin-report-max-orphans` as quality controls. |
+| 228.3 | Regression tests | @tester | `tests/test_shared_model_v2.py`, `tests/test_desktop_openability_suite.py` | Medium | Lock behavior for strict fail/pass and non-empty shared semantic model assertions. |
+
+### Sprint 229 — Documentation & CLI Coherence
+
+**Goal:** Keep docs and runtime behavior aligned at every release.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 229.1 | Flag parity audit | @orchestrator | `README.md`, `.github/skills/tableau-to-powerbi/references/flags.md` | Low | Ensure all exposed flags and defaults are documented once and consistently. |
+| 229.2 | Reliability runbook | @reviewer | `docs/MIGRATION_CHECKLIST.md`, `docs/FAQ.md` | Low | Add troubleshooting for openability failures and strict-thin-report violations. |
+| 229.3 | Changelog quality entry template | @orchestrator | `CHANGELOG.md` | Low | Standardize release notes for gates/tests/docs deltas. |
+
+### Sprint 230 — Release Pipeline Discipline
+
+**Goal:** Make release publication resilient to local git environment anomalies.
+
+| # | Item | Owner | File(s) | Est. | Details |
+|---|------|-------|---------|------|---------|
+| 230.1 | Safe push helper | @orchestrator | `scripts/`, `docs/DEVELOPMENT_PLAN.md` | Medium | Add documented non-interactive push guidance (`gc.auto=0`, `maintenance.auto=false`) for noisy Windows environments. |
+| 230.2 | Commit scope guardrails | @tester | `tests/` + CI checks | Low | Validate docs-only commits do not accidentally include perf probes or unrelated artifacts. |
+| 230.3 | Branch protection compatibility checks | @deployer | `.github/workflows/` | Low | Ensure required checks and PR flow remain compatible with release cadence. |
+
+### Sprint 231 — v46 Release Gate
+
+**Goal:** Ship v46 only when quality, docs, and process gates are all green.
+
+Release criteria:
+
+- `tests/test_openability.py` green,
+- `RUN_OPENABILITY_SUITE=1 tests/test_desktop_openability_suite.py` green,
+- shared-model strict-thin-report tests green,
+- README/CLI/docs parity check complete,
+- no unresolved blocking risks in changelog release note.
 
 ---
 
