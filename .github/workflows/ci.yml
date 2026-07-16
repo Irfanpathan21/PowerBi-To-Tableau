@@ -99,6 +99,12 @@ jobs:
       - name: Run Fabric integration tests
         run: python -m pytest tests/test_fabric_integration.py -v --tb=short
 
+      - name: Run Desktop openability suite (reference job)
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        env:
+          RUN_OPENABILITY_SUITE: "1"
+        run: python -m pytest tests/test_desktop_openability_suite.py -v --tb=short
+
       - name: Upload coverage artifact
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4

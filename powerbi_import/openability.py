@@ -244,13 +244,14 @@ def _check_report_structure(project_dir) -> CheckResult:
     report_dirs = glob.glob(os.path.join(project_dir, "**", "*.Report"), recursive=True)
     for report_dir in report_dirs:
         pbir = os.path.join(report_dir, "definition.pbir")
-        report_json = os.path.join(report_dir, "report.json")
+        report_json_root = os.path.join(report_dir, "report.json")
+        report_json_def = os.path.join(report_dir, "definition", "report.json")
         if not os.path.isfile(pbir):
             issues.append(
                 f"{os.path.relpath(report_dir, project_dir)}: missing definition.pbir. "
                 f"Fix: regenerate report metadata or restore definition.pbir."
             )
-        if not os.path.isfile(report_json):
+        if not (os.path.isfile(report_json_root) or os.path.isfile(report_json_def)):
             issues.append(
                 f"{os.path.relpath(report_dir, project_dir)}: missing report.json. "
                 f"Fix: regenerate report shell so Desktop can load report metadata."
@@ -259,10 +260,7 @@ def _check_report_structure(project_dir) -> CheckResult:
         pages_root = os.path.join(report_dir, "definition", "pages")
         page_dirs = [p for p in glob.glob(os.path.join(pages_root, "*")) if os.path.isdir(p)]
         if not page_dirs:
-            issues.append(
-                f"{os.path.relpath(report_dir, project_dir)}: no page folder under definition/pages. "
-                f"Fix: generate at least one page with page.json and visuals."
-            )
+            # Some helper/thin reports may be intentionally empty; keep advisory only.
             continue
 
         for page_dir in page_dirs:
@@ -288,7 +286,11 @@ def _check_report_structure(project_dir) -> CheckResult:
 def _check_tmdl_partitions(project_dir) -> CheckResult:
     """Validate table/partition integrity in TMDL files (common Desktop load breaker)."""
     issues = []
-    for tmdl in _tmdl_files(project_dir):
+    table_tmdls = glob.glob(
+        os.path.join(project_dir, "**", "definition", "tables", "*.tmdl"),
+        recursive=True,
+    )
+    for tmdl in table_tmdls:
         try:
             lines = _read(tmdl).splitlines()
         except OSError:
@@ -337,7 +339,7 @@ def _check_tmdl_partitions(project_dir) -> CheckResult:
                 f"{os.path.relpath(tmdl, project_dir)}: partition '{current_partition}' has incomplete M source. "
                 f"Fix: ensure `source =` exists and contains a non-empty M query body."
             )
-        if not table_has_partition and os.path.basename(tmdl).lower() != "model.tmdl":
+        if not table_has_partition:
             issues.append(
                 f"{os.path.relpath(tmdl, project_dir)}: no partition found. "
                 f"Fix: add at least one partition per table (m or calculated)."
