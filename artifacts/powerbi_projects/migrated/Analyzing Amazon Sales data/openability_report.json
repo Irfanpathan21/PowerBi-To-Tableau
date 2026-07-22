@@ -1,0 +1,64 @@
+{
+  "project_dir": "artifacts\\powerbi_projects\\migrated\\Analyzing Amazon Sales data",
+  "openable": true,
+  "blocking_count": 0,
+  "warning_count": 0,
+  "blocking_issues": [],
+  "warnings": [],
+  "checks": [
+    {
+      "name": "structure",
+      "ok": true,
+      "severity": "error",
+      "issues": []
+    },
+    {
+      "name": "json_parse",
+      "ok": true,
+      "severity": "error",
+      "issues": []
+    },
+    {
+      "name": "tmdl_present",
+      "ok": true,
+      "severity": "error",
+      "issues": []
+    },
+    {
+      "name": "tmdl_partitions",
+      "ok": true,
+      "severity": "error",
+      "issues": []
+    },
+    {
+      "name": "power_query",
+      "ok": true,
+      "severity": "error",
+      "issues": []
+    },
+    {
+      "name": "dax",
+      "ok": true,
+      "severity": "error",
+      "issues": []
+    },
+    {
+      "name": "references",
+      "ok": true,
+      "severity": "error",
+      "issues": []
+    },
+    {
+      "name": "report_structure",
+      "ok": true,
+      "severity": "error",
+      "issues": []
+    },
+    {
+      "name": "schema",
+      "ok": true,
+      "severity": "warning",
+      "issues": []
+    }
+  ]
+}

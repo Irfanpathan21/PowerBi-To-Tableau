@@ -1,0 +1,4 @@
+perspective 'Full Model'
+	perspectiveTable 'Amazon Sales data.csv'
+	perspectiveTable Extract
+	perspectiveTable Calendar

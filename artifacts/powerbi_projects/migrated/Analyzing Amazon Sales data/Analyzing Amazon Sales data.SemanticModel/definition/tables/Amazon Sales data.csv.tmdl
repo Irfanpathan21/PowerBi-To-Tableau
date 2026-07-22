@@ -1,0 +1,186 @@
+table 'Amazon Sales data.csv'
+	lineageTag: 8393ab7e-162b-4568-8a6a-a181afeb73ce
+
+	column Region
+		dataType: string
+		lineageTag: 5d49087d-afab-4876-ae55-c0dd8a8be98c
+		summarizeBy: none
+		sourceColumn: Region
+		dataCategory: StateOrProvince
+
+		annotation SummarizationSetBy = Automatic
+
+	column Country
+		dataType: string
+		lineageTag: 396639dd-3aef-4f38-abfc-9a84a583e658
+		summarizeBy: none
+		sourceColumn: Country
+		dataCategory: Country
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Item Type'
+		dataType: string
+		lineageTag: d5117f72-e152-4404-b690-09fdeb12d207
+		summarizeBy: none
+		sourceColumn: 'Item Type'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Sales Channel'
+		dataType: string
+		lineageTag: a97a1c14-9f97-48d3-90c4-7f4940f359c2
+		summarizeBy: none
+		sourceColumn: 'Sales Channel'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Order Priority'
+		dataType: string
+		lineageTag: 6b4f9d1f-885b-4025-a6d1-17f3cf6cc9c8
+		summarizeBy: none
+		sourceColumn: 'Order Priority'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Order Date'
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 540df999-6d53-46b0-932b-4321c0bc342d
+		summarizeBy: none
+		sourceColumn: 'Order Date'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Order ID'
+		dataType: int64
+		lineageTag: 272e2fa4-5bba-4e28-aad1-a92a9f50ec7f
+		summarizeBy: sum
+		sourceColumn: 'Order ID'
+		annotation Copilot_Hidden = true
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Ship Date'
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 3dfbf6dd-7933-4fab-b92d-6693d97d19f0
+		summarizeBy: none
+		sourceColumn: 'Ship Date'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Units Sold'
+		dataType: int64
+		lineageTag: c4148c5f-d611-42f1-af16-79d43164c7cd
+		summarizeBy: sum
+		sourceColumn: 'Units Sold'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Unit Price'
+		dataType: double
+		formatString: #,0.00
+		lineageTag: ce7822d6-62f3-431c-af7d-1f1a3d3194c0
+		summarizeBy: sum
+		sourceColumn: 'Unit Price'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Unit Cost'
+		dataType: double
+		formatString: #,0.00
+		lineageTag: e461c1d0-f5d5-44ff-8927-5654ce45176d
+		summarizeBy: sum
+		sourceColumn: 'Unit Cost'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Total Revenue'
+		dataType: double
+		formatString: #,0.00
+		lineageTag: d1e0ff73-a635-4199-8cad-255eb13eb970
+		summarizeBy: sum
+		sourceColumn: 'Total Revenue'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Total Cost'
+		dataType: double
+		formatString: #,0.00
+		lineageTag: 09823bbc-e97e-4b5a-8910-93ed7ffbe9e9
+		summarizeBy: sum
+		sourceColumn: 'Total Cost'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Total Profit'
+		dataType: double
+		formatString: #,0.00
+		lineageTag: 8cbdbe58-df0a-4ef0-8102-51aa4c8e7a7c
+		summarizeBy: sum
+		sourceColumn: 'Total Profit'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Action (Country)'
+		dataType: string
+		lineageTag: cbcf6737-8bd8-4068-bfc4-7c50cfeb8619
+		summarizeBy: none
+		sourceColumn: 'Action (Country)'
+		displayFolder: Groups
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Action (Item Type)'
+		dataType: string
+		lineageTag: 6c4388d3-bd35-42e6-be08-0fa39920e4e2
+		summarizeBy: none
+		sourceColumn: 'Action (Item Type)'
+		displayFolder: Groups
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'Amazon Sales data.csv-906efda4-ef9b-4339-a0e6-5c798c42ba87' = m
+		mode: import
+		source =
+				let
+				    
+				    Source = try
+				
+				        Csv.Document(File.Contents(DataFolder & "\Amazon Sales data.csv"), [
+				        Delimiter=",",
+				        Columns=14,
+				        Encoding=65001,
+				        QuoteStyle=QuoteStyle.None
+				    ])
+				
+				    otherwise
+				
+				        #table({"Region", "Country", "Item Type", "Sales Channel", "Order Priority", "Order Date", "Order ID", "Ship Date", "Units Sold", "Unit Price", "Unit Cost", "Total Revenue", "Total Cost", "Total Profit"}, {}),
+				    #"Promoted Headers" = Table.PromoteHeaders(Source, [PromoteAllScalars=true]),
+				    #"Changed Types" = Table.TransformColumnTypes(#"Promoted Headers", {
+				        {"Region", type text},
+				        {"Country", type text},
+				        {"Item Type", type text},
+				        {"Sales Channel", type text},
+				        {"Order Priority", type text},
+				        {"Order Date", type date},
+				        {"Order ID", Int64.Type},
+				        {"Ship Date", type date},
+				        {"Units Sold", Int64.Type},
+				        {"Unit Price", type number},
+				        {"Unit Cost", type number},
+				        {"Total Revenue", type number},
+				        {"Total Cost", type number},
+				        {"Total Profit", type number}
+				    }),
+				    #"Added Action (Country)" = Table.AddColumn(#"Changed Types", "Action (Country)", each Text.From([#"Country"]), type text),
+				    #"Added Action (Item Type)" = Table.AddColumn(#"Added Action (Country)", "Action (Item Type)", each Text.From([#"Item Type"]), type text),
+				    Result = #"Added Action (Item Type)"
+				in
+				    Result
+
+	annotation PBI_ResultType = Table
+	annotation Copilot_TableDescription = Contains 16 columns: Region, Country, Item Type, Sales Channel, Order Priority, Order Date, Order ID, Ship Date, ... (16 columns total).
+

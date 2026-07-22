@@ -1,0 +1,22 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-US
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation PBI_QueryOrder = ["Amazon Sales data.csv","Extract","Calendar"]
+
+ref table 'Amazon Sales data.csv'
+ref table Extract
+ref table Calendar
+
+ref relationship 8b31518c-1d6b-4ce1-8eef-9a5caa77f501
+ref relationship ad9a3487-082f-42ae-bd0e-62b75b9832a3
+ref relationship a2768133-329c-4740-a4f8-7c5a2a1a1f3a
+
+ref expression DataFolder
+
+ref perspective 'Full Model'
+

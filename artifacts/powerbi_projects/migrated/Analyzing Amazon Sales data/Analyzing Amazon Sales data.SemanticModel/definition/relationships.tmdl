@@ -1,0 +1,18 @@
+relationship 8b31518c-1d6b-4ce1-8eef-9a5caa77f501
+	fromColumn: 'Amazon Sales data.csv'.'Order ID'
+	toColumn: Extract.'Order ID'
+	fromCardinality: many
+	toCardinality: many
+	crossFilteringBehavior: oneDirection
+
+relationship ad9a3487-082f-42ae-bd0e-62b75b9832a3
+	fromColumn: 'Amazon Sales data.csv'.'Order Date'
+	toColumn: Calendar.Date
+	crossFilteringBehavior: bothDirections
+
+relationship a2768133-329c-4740-a4f8-7c5a2a1a1f3a
+	fromColumn: Extract.'Order Date'
+	toColumn: Calendar.Date
+	crossFilteringBehavior: bothDirections
+	isActive: false
+

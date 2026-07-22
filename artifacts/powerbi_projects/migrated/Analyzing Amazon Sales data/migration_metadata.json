@@ -1,0 +1,146 @@
+{
+  "generated_at": "2026-07-22T22:18:36.089563",
+  "source": "Tableau Migration",
+  "report_name": "Analyzing Amazon Sales data",
+  "objects_converted": {
+    "worksheets": 6,
+    "dashboards": 1,
+    "datasources": 1,
+    "calculations": 0,
+    "parameters": 0,
+    "filters": 22,
+    "stories": 0,
+    "sets": 0,
+    "groups": 2,
+    "bins": 0,
+    "hierarchies": 0,
+    "user_filters": 0,
+    "actions": 4,
+    "custom_sql": 0
+  },
+  "generated_output": {
+    "pages": 1,
+    "visuals": 10,
+    "theme_applied": false,
+    "theme_detail": {
+      "status": "skipped",
+      "reason": "no dashboard colors detected"
+    }
+  },
+  "tmdl_stats": {
+    "tables": 3,
+    "measures": 0,
+    "columns": 38,
+    "relationships": 2
+  },
+  "dax_measure_names": [],
+  "visual_type_mappings": {
+    "KPI's": "Automatic",
+    "Map": "Automatic",
+    "Revenue And Profit over Year": "Automatic",
+    "Top 5 Item Type Revenue wise": "Automatic",
+    "Total Profit by Sales Channel": "Automatic",
+    "Total Revenue by Sales Channel": "Automatic"
+  },
+  "visual_details": [
+    {
+      "worksheet": "KPI's",
+      "tableau_mark": "Automatic",
+      "pbi_visual": "lineClusteredColumnComboChart",
+      "dimensions": [
+        "Item Type",
+        "Region",
+        "Ship Date",
+        "Action (Item Type)"
+      ],
+      "measures": [
+        "Total Profit",
+        "Total Revenue",
+        "Units Sold"
+      ],
+      "dax_measures": [],
+      "field_count": 7
+    },
+    {
+      "worksheet": "Map",
+      "tableau_mark": "Automatic",
+      "pbi_visual": "azureMap",
+      "dimensions": [
+        "Ship Date",
+        "Item Type",
+        "Region",
+        "Action (Item Type)",
+        "Country"
+      ],
+      "measures": [
+        "Total Revenue"
+      ],
+      "dax_measures": [],
+      "field_count": 6
+    },
+    {
+      "worksheet": "Revenue And Profit over Year",
+      "tableau_mark": "Automatic",
+      "pbi_visual": "lineClusteredColumnComboChart",
+      "dimensions": [
+        "Ship Date",
+        "Region",
+        "Item Type",
+        "Action (Item Type)"
+      ],
+      "measures": [
+        "Total Profit",
+        "Total Revenue"
+      ],
+      "dax_measures": [],
+      "field_count": 6
+    },
+    {
+      "worksheet": "Top 5 Item Type Revenue wise",
+      "tableau_mark": "Automatic",
+      "pbi_visual": "clusteredBarChart",
+      "dimensions": [
+        "Item Type",
+        "Ship Date"
+      ],
+      "measures": [
+        "Total Revenue"
+      ],
+      "dax_measures": [],
+      "field_count": 3
+    },
+    {
+      "worksheet": "Total Profit by Sales Channel",
+      "tableau_mark": "Automatic",
+      "pbi_visual": "pieChart",
+      "dimensions": [
+        "Sales Channel",
+        "pcto:sum:Total Profit",
+        "Ship Date",
+        "Item Type",
+        "Region",
+        "Action (Item Type)"
+      ],
+      "measures": [],
+      "dax_measures": [],
+      "field_count": 6
+    },
+    {
+      "worksheet": "Total Revenue by Sales Channel",
+      "tableau_mark": "Automatic",
+      "pbi_visual": "pieChart",
+      "dimensions": [
+        "Sales Channel",
+        "pcto:sum:Total Revenue",
+        "Ship Date",
+        "Item Type",
+        "Region",
+        "Action (Item Type)"
+      ],
+      "measures": [],
+      "dax_measures": [],
+      "field_count": 6
+    }
+  ],
+  "approximations": []
+}

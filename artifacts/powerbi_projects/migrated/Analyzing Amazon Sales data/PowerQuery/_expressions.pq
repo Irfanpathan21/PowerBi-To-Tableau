@@ -1,0 +1,1 @@
+expression DataFolder = "C:\\Users\\ashup\\Downloads\\ash\\Tableau-To-PowerBI\\artifacts\\powerbi_projects\\migrated\\Analyzing Amazon Sales data\\Data\\TableauTemp" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]

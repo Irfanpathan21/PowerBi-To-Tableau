@@ -1,0 +1,58 @@
+{
+  "total": 7,
+  "passed": 7,
+  "failed": 0,
+  "warned": 0,
+  "fidelity_percent": 100.0,
+  "status": "pass",
+  "details": [
+    {
+      "test": "row_count:federated.0fe1kgi0xnq78p17wifi41j35mvm",
+      "passed": true,
+      "severity": "info",
+      "message": "federated.0fe1kgi0xnq78p17wifi41j35mvm: 0 rows in Tableau"
+    },
+    {
+      "test": "visual_coverage:KPI's",
+      "passed": true,
+      "severity": "pass",
+      "coverage_percent": 100.0,
+      "message": "KPI's: 100.0% field coverage"
+    },
+    {
+      "test": "visual_coverage:Map",
+      "passed": true,
+      "severity": "pass",
+      "coverage_percent": 100.0,
+      "message": "Map: 100.0% field coverage"
+    },
+    {
+      "test": "visual_coverage:Revenue And Profit over Year",
+      "passed": true,
+      "severity": "pass",
+      "coverage_percent": 100.0,
+      "message": "Revenue And Profit over Year: 100.0% field coverage"
+    },
+    {
+      "test": "visual_coverage:Top 5 Item Type Revenue wise",
+      "passed": true,
+      "severity": "pass",
+      "coverage_percent": 100.0,
+      "message": "Top 5 Item Type Revenue wise: 100.0% field coverage"
+    },
+    {
+      "test": "visual_coverage:Total Profit by Sales Channel",
+      "passed": true,
+      "severity": "pass",
+      "coverage_percent": 100.0,
+      "message": "Total Profit by Sales Channel: 100.0% field coverage"
+    },
+    {
+      "test": "visual_coverage:Total Revenue by Sales Channel",
+      "passed": true,
+      "severity": "pass",
+      "coverage_percent": 100.0,
+      "message": "Total Revenue by Sales Channel: 100.0% field coverage"
+    }
+  ]
+}

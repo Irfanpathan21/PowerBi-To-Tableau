@@ -1,0 +1,63 @@
+{
+  "tables": [
+    {
+      "tableau_datasource": "federated.0fe1kgi0xnq78p17wifi41j35mvm",
+      "tableau_table": "Amazon Sales data.csv",
+      "pbi_table": "Amazon Sales data.csv"
+    },
+    {
+      "tableau_datasource": "federated.0fe1kgi0xnq78p17wifi41j35mvm",
+      "tableau_table": "Extract",
+      "pbi_table": "Extract"
+    },
+    {
+      "tableau_datasource": "",
+      "tableau_table": "Calendar",
+      "pbi_table": "Calendar"
+    }
+  ],
+  "calculations": [],
+  "relationships": [
+    {
+      "from": "Amazon Sales data.csv[Order ID]",
+      "to": "Extract[Order ID]",
+      "cardinality": "oneDirection"
+    },
+    {
+      "from": "Amazon Sales data.csv[Order Date]",
+      "to": "Calendar[Date]",
+      "cardinality": "bothDirections"
+    },
+    {
+      "from": "Extract[Order Date]",
+      "to": "Calendar[Date]",
+      "cardinality": "bothDirections"
+    }
+  ],
+  "worksheets": [
+    {
+      "tableau_worksheet": "KPI's",
+      "pbi_page": "KPI's"
+    },
+    {
+      "tableau_worksheet": "Map",
+      "pbi_page": "Map"
+    },
+    {
+      "tableau_worksheet": "Revenue And Profit over Year",
+      "pbi_page": "Revenue And Profit over Year"
+    },
+    {
+      "tableau_worksheet": "Top 5 Item Type Revenue wise",
+      "pbi_page": "Top 5 Item Type Revenue wise"
+    },
+    {
+      "tableau_worksheet": "Total Profit by Sales Channel",
+      "pbi_page": "Total Profit by Sales Channel"
+    },
+    {
+      "tableau_worksheet": "Total Revenue by Sales Channel",
+      "pbi_page": "Total Revenue by Sales Channel"
+    }
+  ]
+}
