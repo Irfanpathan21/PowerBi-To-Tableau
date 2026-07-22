@@ -1537,52 +1537,60 @@ _SCORE_COLORS = {
 }
 
 
+def _safe_print(text: str = ""):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        safe_str = text.encode("ascii", errors="replace").decode("ascii")
+        print(safe_str)
+
+
 def print_assessment_report(report: AssessmentReport) -> None:
     """Pretty-print the assessment report to stdout."""
     w = 72
-    print()
-    print("┌" + "─" * w + "┐")
-    print("│" + " PRE-MIGRATION ASSESSMENT REPORT".center(w) + "│")
-    print("├" + "─" * w + "┤")
-    print(f"│  Workbook:  {report.workbook_name:<{w - 14}}│")
-    print(f"│  Date:      {report.timestamp:<{w - 14}}│")
+    _safe_print()
+    _safe_print("+" + "-" * w + "+")
+    _safe_print("|" + " PRE-MIGRATION ASSESSMENT REPORT".center(w) + "|")
+    _safe_print("+" + "-" * w + "+")
+    _safe_print(f"|  Workbook:  {report.workbook_name:<{w - 14}}|")
+    _safe_print(f"|  Date:      {report.timestamp:<{w - 14}}|")
     score_label = _SCORE_COLORS.get(report.overall_score, report.overall_score)
-    print(f"│  Readiness: {score_label:<{w - 14}}│")
+    _safe_print(f"|  Readiness: {score_label:<{w - 14}}|")
     summary = (
         f"{report.total_checks} checks | "
         f"{report.total_pass} passed | "
         f"{report.total_warn} warnings | "
         f"{report.total_fail} failures"
     )
-    print(f"│  Summary:   {summary:<{w - 14}}│")
-    print("├" + "─" * w + "┤")
+    _safe_print(f"|  Summary:   {summary:<{w - 14}}|")
+    _safe_print("+" + "-" * w + "+")
 
     for cat in report.categories:
         cat_icon = _SEV_ICONS.get(cat.worst_severity, " ")
         cat_header = f" {cat_icon} {cat.name}"
-        print(f"│{cat_header:<{w}}│")
-        print("│" + "  " + "─" * (w - 4) + "  │")
+        _safe_print(f"|{cat_header:<{w}}|")
+        _safe_print("|" + "  " + "-" * (w - 4) + "  |")
 
         for ck in cat.checks:
             icon = _SEV_ICONS.get(ck.severity, " ")
             line = f"    {icon} {ck.name}: {ck.detail}"
             # Wrap long lines
             while len(line) > w:
-                print(f"│{line[:w]}│")
+                _safe_print(f"|{line[:w]}|")
                 line = "      " + line[w:]
-            print(f"│{line:<{w}}│")
+            _safe_print(f"|{line:<{w}}|")
 
             if ck.recommendation and ck.severity in (WARN, FAIL):
-                rec_line = f"      → {ck.recommendation}"
+                rec_line = f"      -> {ck.recommendation}"
                 while len(rec_line) > w:
-                    print(f"│{rec_line[:w]}│")
+                    _safe_print(f"|{rec_line[:w]}|")
                     rec_line = "      " + rec_line[w:]
-                print(f"│{rec_line:<{w}}│")
+                _safe_print(f"|{rec_line:<{w}}|")
 
-        print("│" + " " * w + "│")
+        _safe_print("|" + " " * w + "|")
 
-    print("└" + "─" * w + "┘")
-    print()
+    _safe_print("+" + "-" * w + "+")
+    _safe_print()
 
 
 # ═══════════════════════════════════════════════════════════════════

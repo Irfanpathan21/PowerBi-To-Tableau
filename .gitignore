@@ -87,3 +87,12 @@ profile_results/
 
 # Tableau temp
 ~*.twbr
+
+# Root sample data & generated PBIP output
+/*.twbx
+/*.twb
+/*.csv
+/*.pbip
+/*.Report/
+/*.SemanticModel/
+

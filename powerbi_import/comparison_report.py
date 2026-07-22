@@ -467,7 +467,10 @@ def generate_comparison_report(extract_dir, pbip_dir, output_path=None):
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(parts))
-    print(f"  ✓ Comparison report: {output_path}")
+    try:
+        print(f"  ✓ Comparison report: {output_path}")
+    except UnicodeEncodeError:
+        print(f"  [OK] Comparison report: {output_path}")
     return output_path
 
 

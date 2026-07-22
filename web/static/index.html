@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tableau to Power BI — Migration Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">🔄</div>
+        <div class="brand-text">
+          <h1>Tableau <span class="accent-text">→</span> Power BI</h1>
+          <p class="subtitle">Automated Migration & Assessment Suite</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="status-pill online"><span class="pulse-dot"></span> Backend Active</span>
+        <span class="version-badge">v40.0.0</span>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="main-content">
+      <!-- Left Panel: Configuration & File Input -->
+      <section class="panel config-panel">
+        <div class="panel-header">
+          <h2>📁 Input & Settings</h2>
+          <p>Upload your workbook and configure backend migration flags.</p>
+        </div>
+
+        <!-- Dropzone -->
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".twb,.twbx,.tds,.tdsx" hidden>
+          <div class="dropzone-content" id="dropzoneContent">
+            <div class="upload-icon">📤</div>
+            <h3>Drag & Drop Tableau Workbook</h3>
+            <p>Supports <code>.twb</code>, <code>.twbx</code>, <code>.tds</code>, <code>.tdsx</code></p>
+            <button class="btn btn-secondary" type="button" id="browseBtn">Browse File</button>
+          </div>
+          <div class="file-preview hidden" id="filePreview">
+            <div class="file-icon">📊</div>
+            <div class="file-info">
+              <span class="file-name" id="fileName">workbook.twbx</span>
+              <span class="file-size" id="fileSize">0 MB</span>
+            </div>
+            <button class="btn-icon" type="button" id="removeFileBtn" title="Remove file">✕</button>
+          </div>
+        </div>
+
+        <!-- Configuration Options -->
+        <form id="migrationForm" class="config-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="outputFormat">Output Format</label>
+              <select id="outputFormat" name="output_format" class="form-control">
+                <option value="pbip" selected>Power BI Project (.pbip)</option>
+                <option value="pbix">Power BI Archive (.pbix)</option>
+                <option value="fabric">Microsoft Fabric Lakehouse & Pipeline</option>
+                <option value="tmdl">TMDL Model Only</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="culture">Target Culture / Locale</label>
+              <select id="culture" name="culture" class="form-control">
+                <option value="en-US" selected>en-US (English - United States)</option>
+                <option value="en-GB">en-GB (English - United Kingdom)</option>
+                <option value="de-DE">de-DE (German)</option>
+                <option value="fr-FR">fr-FR (French)</option>
+                <option value="es-ES">es-ES (Spanish)</option>
+                <option value="ja-JP">ja-JP (Japanese)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Feature Flags & Toggles -->
+          <div class="options-accordion">
+            <div class="accordion-header">
+              <span>⚙️ Advanced Features & Quality Gates</span>
+            </div>
+            <div class="options-grid">
+              <label class="toggle-control">
+                <input type="checkbox" id="autoheal" name="autoheal" checked>
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">
+                  <strong>Self-Healing v3.4</strong>
+                  <small>Automatically repair report layout & DAX leaks</small>
+                </span>
+              </label>
+
+              <label class="toggle-control">
+                <input type="checkbox" id="dataBlending" name="data_blending" checked>
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">
+                  <strong>Data Blending Engine</strong>
+                  <small>Reconstruct cross-datasource blends as Power Query merges</small>
+                </span>
+              </label>
+
+              <label class="toggle-control">
+                <input type="checkbox" id="daxOptimize" name="dax_optimize" checked>
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">
+                  <strong>DAX Optimizer</strong>
+                  <small>Simplify measures and remove redundant formulas</small>
+                </span>
+              </label>
+
+              <label class="toggle-control">
+                <input type="checkbox" id="credTemplate" name="credentials_template" checked>
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">
+                  <strong>OAuth & Credentials</strong>
+                  <small>Generate connection credential templates</small>
+                </span>
+              </label>
+
+              <label class="toggle-control">
+                <input type="checkbox" id="verifyOpen" name="verify_open" checked>
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">
+                  <strong>Openability Quality Gate</strong>
+                  <small>Perform static structural validation</small>
+                </span>
+              </label>
+
+              <label class="toggle-control">
+                <input type="checkbox" id="desktopProbe" name="desktop_probe">
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">
+                  <strong>Power BI Probe</strong>
+                  <small>Verify rendering with Power BI Desktop probe</small>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="action-bar">
+            <button type="button" class="btn btn-outline" id="assessBtn">
+              <span>🔍 Run Assessment</span>
+            </button>
+            <button type="submit" class="btn btn-primary" id="migrateBtn">
+              <span>🚀 Start Migration</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Right Panel: Results, Progress & Analytics -->
+      <section class="panel results-panel">
+        <div class="panel-header">
+          <h2>📊 Progress & Results</h2>
+          <p>Real-time pipeline tracking and conversion analytics.</p>
+        </div>
+
+        <!-- Initial Placeholder -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">🎯</div>
+          <h3>Ready for Migration</h3>
+          <p>Upload a workbook on the left and click <strong>Start Migration</strong> or <strong>Run Assessment</strong> to begin.</p>
+        </div>
+
+        <!-- Progress Container -->
+        <div class="progress-card hidden" id="progressCard">
+          <div class="progress-header">
+            <span class="progress-title" id="progressStepTitle">Processing extraction...</span>
+            <span class="progress-percent" id="progressPercent">0%</span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progressBarFill"></div>
+          </div>
+          <p class="progress-status" id="progressMessage">Preparing workbook parser...</p>
+        </div>
+
+        <!-- Terminal Log Console -->
+        <div class="terminal-card hidden" id="terminalCard">
+          <div class="terminal-header">
+            <span>💻 Backend Execution Log</span>
+            <button class="btn-text" id="clearLogBtn">Clear</button>
+          </div>
+          <div class="terminal-body" id="terminalLogs">
+            <div class="log-line info">[SYSTEM] Web server ready. Awaiting input file...</div>
+          </div>
+        </div>
+
+        <!-- Summary & Results View -->
+        <div class="results-card hidden" id="resultsCard">
+          <div class="score-banner">
+            <div class="grade-circle" id="gradeCircle">A</div>
+            <div class="score-details">
+              <h3>Fidelity Score: <span id="fidelityScore">100%</span></h3>
+              <p id="scoreSubtitle">All visuals, calculations, and datasources converted cleanly.</p>
+            </div>
+            <span class="badge-success" id="openabilityBadge">✓ Gate Passed</span>
+          </div>
+
+          <!-- Stats Grid -->
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon">🗄️</div>
+              <div class="metric-val" id="statTables">0</div>
+              <div class="metric-lbl">TMDL Tables</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📐</div>
+              <div class="metric-val" id="statColumns">0</div>
+              <div class="metric-lbl">Columns</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">🧮</div>
+              <div class="metric-val" id="statMeasures">0</div>
+              <div class="metric-lbl">DAX Measures</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📑</div>
+              <div class="metric-val" id="statPages">0</div>
+              <div class="metric-lbl">Report Pages</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📊</div>
+              <div class="metric-val" id="statVisuals">0</div>
+              <div class="metric-lbl">Visuals</div>
+            </div>
+          </div>
+
+          <!-- Output Download & Launch Actions -->
+          <div class="output-actions">
+            <button class="btn btn-secondary" id="downloadZipBtn">
+              <span>📦 Download PBIP (.zip)</span>
+            </button>
+            <button class="btn btn-success" id="openPbiBtn">
+              <span>🟡 Open in Power BI Desktop</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
